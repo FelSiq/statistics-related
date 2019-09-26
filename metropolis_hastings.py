@@ -1,7 +1,103 @@
-"""Implementation of Symmetric Metropolis-Hasting algorithm."""
+"""Implementation of Metropolis-Hasting algorithm."""
 import typing as t
 
 import numpy as np
+
+
+def symm_parallel_metropolis_hasting(
+        initial_theta: t.Union[float, np.ndarray],
+        num_samples: int,
+        log_target: t.Callable[
+            [t.Union[float, np.ndarray], t.Union[float, np.ndarray]], float],
+        proposal_sampler: t.
+        Callable[[t.Union[float, np.ndarray], t.Union[float, np.ndarray]], t.
+                 Union[float, np.ndarray]],
+        betas: np.ndarray,
+        discard_warm_up: bool = True,
+        warm_up_frac: float = 0.5,
+        verbose: bool = False,
+        return_acceptance_rate: bool = False,
+        random_state: t.Optional[int] = None) -> np.ndarray:
+    """Symmetric case of Metropolis-Hasting algorithm."""
+    if num_samples <= 0:
+        raise ValueError("'num_samples' must be a positive value.")
+
+    if discard_warm_up and not 0 <= warm_up_frac < 1:
+        raise ValueError("'warm_up_frac' must be in [0.0, 1.0) range.")
+
+    if random_state is not None:
+        np.random.seed(random_state)
+
+    theta = np.array([np.copy(initial_theta) for _ in np.arange(betas.size)],
+                     dtype=np.float)
+
+    theta_log_targ = np.array([
+        log_target(cur_theta, cur_beta)
+        for cur_theta, cur_beta in zip(theta, betas)
+    ],
+                              dtype=np.float)
+
+    if isinstance(initial_theta, (int, float, np.number)):
+        thetas = np.zeros((num_samples, betas.size), dtype=np.float)
+
+    else:
+        thetas = np.zeros((num_samples, betas.size, initial_theta.size),
+                          dtype=np.float)
+
+    hits = np.zeros(betas.size)
+    swaps = np.zeros(betas.size - 1)
+    swaps_hits = np.zeros(betas.size - 1)
+
+    for ind_inst in np.arange(num_samples):
+        for ind_beta, cur_beta in enumerate(betas):
+            theta_proposed = proposal_sampler(theta[ind_beta], cur_beta)
+            log_theta_prop = log_target(theta_proposed, cur_beta)
+
+            if np.log(np.random.uniform(
+                    0, 1)) < log_theta_prop - theta_log_targ[ind_beta]:
+                theta[ind_beta] = theta_proposed
+                theta_log_targ[ind_beta] = log_theta_prop
+                hits[ind_beta] += 1
+
+        swap_ind = np.random.randint(betas.size - 1)
+        swaps[swap_ind] += 1
+
+        aux = log_target(theta[swap_ind], betas[swap_ind + 1]) + log_target(
+            theta[swap_ind + 1], betas[swap_ind])
+        aux -= theta_log_targ[swap_ind] + theta_log_targ[swap_ind + 1]
+
+        if np.log(np.random.uniform(0, 1)) < aux:
+            theta[swap_ind], theta[swap_ind + 1] = theta[swap_ind +
+                                                         1], theta[swap_ind]
+            theta_log_targ[swap_ind] = log_target(theta[swap_ind],
+                                                  betas[swap_ind])
+            theta_log_targ[swap_ind + 1] = log_target(theta[swap_ind + 1],
+                                                      betas[swap_ind + 1])
+            swaps_hits[swap_ind] += 1
+
+        thetas[ind_inst] = theta
+
+    acceptance_rate = hits / num_samples
+    swap_acceptance_rate = np.zeros(swaps_hits.size)
+    swap_acceptance_rate[swaps > 0] = swaps_hits / swaps
+
+    if verbose:
+        print("Acceptance rate: {}".format(acceptance_rate))
+        print("Theoretically expected: [0.23, 0.50] - ",
+              np.logical_and(acceptance_rate >= 0.23, acceptance_rate <= 0.50))
+        print("Swap (chains j and j+1) acceptance rate: {}".format(
+            swap_acceptance_rate))
+
+    if discard_warm_up:
+        ret_thetas = thetas[int(warm_up_frac * num_samples):]
+
+    else:
+        ret_thetas = thetas
+
+    if return_acceptance_rate:
+        return ret_thetas, acceptance_rate
+
+    return ret_thetas
 
 
 def metropolis_hasting(
@@ -101,7 +197,7 @@ def symm_metropolis_hasting(
     return ret
 
 
-def _experiment() -> None:
+def _experiment_01() -> None:
     """Experiment 01."""
     import matplotlib.pyplot as plt
     import scipy.stats
@@ -136,5 +232,44 @@ def _experiment() -> None:
     plt.show()
 
 
+def _experiment_02() -> None:
+    """Experiment 01."""
+    import matplotlib.pyplot as plt
+
+    def bimodal_dist(theta, gamma):
+        return np.exp(-gamma * np.square(np.square(theta) - 1))
+
+    def log_bimodal_dist(theta, gamma):
+        return -gamma * np.square(np.square(theta) - 1)
+
+    random_seed = 16
+    np.random.seed(random_seed)
+
+    betas = np.logspace(-3, 0, 5)
+    print("Betas:", betas)
+
+    gamma = 64
+
+    samples = symm_parallel_metropolis_hasting(
+        initial_theta=1,
+        num_samples=10000,
+        log_target=lambda x, beta: beta * log_bimodal_dist(x, gamma),
+        proposal_sampler=
+        lambda x, beta: x + 0.1 / np.sqrt(beta) * np.random.randn(),
+        betas=betas,
+        verbose=True,
+        random_state=16)
+
+    test_vals = np.linspace(-3, 3, 100)
+    plt.hist(samples[:, -1], bins=64, density=True, label='MCMC MH samples')
+    plt.plot(
+        test_vals,
+        bimodal_dist(test_vals, gamma),
+        label='(Unnormalized) target')
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
-    _experiment()
+    _experiment_01()
+    _experiment_02()
