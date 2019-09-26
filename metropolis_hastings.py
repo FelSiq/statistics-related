@@ -34,8 +34,7 @@ def symm_parallel_metropolis_hasting(
     theta_log_targ = np.array([
         log_target(cur_theta, cur_beta)
         for cur_theta, cur_beta in zip(theta, betas)
-    ],
-                              dtype=np.float)
+    ], dtype=np.float)
 
     if isinstance(initial_theta, (int, float, np.number)):
         thetas = np.zeros((num_samples, betas.size), dtype=np.float)
@@ -233,7 +232,7 @@ def _experiment_01() -> None:
 
 
 def _experiment_02() -> None:
-    """Experiment 01."""
+    """Experiment 02."""
     import matplotlib.pyplot as plt
 
     def bimodal_dist(theta, gamma):
@@ -270,6 +269,72 @@ def _experiment_02() -> None:
     plt.show()
 
 
+def _experiment_03():
+    """3rd experiment."""
+    import matplotlib.pyplot as plt
+
+    def generic_target(x, mu_vec):
+        aux_1 = x - mu_vec
+        aux_2 = np.arange(1, 1 + mu_vec.shape[0])
+        return np.sum(np.exp(-aux_2 / 3 * np.sum(aux_1 * aux_1, axis=1)))
+
+    def generic_log_target(x, mu_vec):
+        aux_1 = x - mu_vec
+        aux_2 = np.arange(1, 1 + mu_vec.shape[0])
+        return np.log(
+            np.sum(np.exp(-aux_2 / 3 * np.sum(aux_1 * aux_1, axis=1))))
+
+    target = lambda x: generic_target(x, mu_vec)
+    log_target = lambda x: generic_log_target(x, mu_vec)
+
+    betas = np.logspace(-2, 0, 5)
+    print("Betas:", betas)
+
+    R = 5
+    mu_vec = np.array([
+        [0, 0],
+        [R, R],
+        [-R, R],
+    ])
+
+    samples = symm_parallel_metropolis_hasting(
+        initial_theta=np.array([0, 3]),
+        num_samples=125000,
+        log_target=lambda x, beta: beta * log_target(x),
+        proposal_sampler=
+        lambda x, beta: x + 1.5 / np.sqrt(beta) * np.random.randn(x.size),
+        betas=betas,
+        verbose=True,
+        random_state=16)
+
+    vals = np.linspace(-10, 10, 100)
+    X, Y = np.meshgrid(vals, vals)
+    Z_1 = np.zeros(X.shape)
+    Z_2 = np.zeros(X.shape)
+    for i in np.arange(vals.size):
+        for j in np.arange(vals.size):
+            aux = target([X[i, j], Y[i, j]])
+            Z_1[i, j] = aux
+            Z_2[i, j] = np.log(aux)
+
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.contour(X, Y, Z_1)
+    plt.plot(samples[:, -1, 0], samples[:, -1, 1], '.')
+    plt.title('Target')
+    plt.subplot(1, 2, 2)
+    plt.contour(X, Y, Z_2)
+    plt.title('Log-target')
+    plt.plot(samples[:, -1, 0], samples[:, -1, 1], '.')
+    plt.show()
+
+    print("E_{0.01}[Theta_1]:", np.mean(samples[:, 0, 0]))
+    print("E_{0.01}[Theta_2]:", np.mean(samples[:, 0, 1]))
+    print("E_{1}[Theta_1]:", np.mean(samples[:, -1, 0]))
+    print("E_{1}[Theta_2]:", np.mean(samples[:, -1, 1]))
+
+
 if __name__ == "__main__":
     _experiment_01()
     _experiment_02()
+    _experiment_03()
