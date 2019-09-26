@@ -4,11 +4,15 @@ import typing as t
 import numpy as np
 
 
-def symm_metropolis_hasting(
-        initial_theta: float,
+def metropolis_hasting(
+        initial_theta: t.Union[float, np.ndarray],
         num_samples: int,
-        log_target: t.Callable[[float], float],
-        proposal_sampler: t.Callable[[float], float],
+        log_target: t.Callable[[t.Union[float, np.ndarray]], float],
+        proposal_sampler: t.Callable[[t.Union[float, np.ndarray]], t.
+                                     Union[float, np.ndarray]],
+        proposal_log_density: t.Optional[t.Callable[
+            [t.Union[float, np.ndarray], t.Union[float, np.
+                                                 ndarray]], float]] = None,
         discard_warm_up: bool = True,
         warm_up_frac: float = 0.5,
         verbose: bool = False,
@@ -34,11 +38,18 @@ def symm_metropolis_hasting(
         thetas = np.zeros((num_samples, initial_theta.size))
 
     hits = 0
+
     for ind in np.arange(num_samples):
         theta_proposed = proposal_sampler(theta)
         log_theta_prop = log_target(theta_proposed)
 
-        if np.log(np.random.uniform(0, 1)) < log_theta_prop - theta_log_targ:
+        q_term = 0.0
+        if proposal_log_density is not None:
+            q_term = (proposal_log_density(theta, theta_proposed) -
+                      proposal_log_density(theta_proposed, theta))
+
+        if np.log(np.random.uniform(
+                0, 1)) < log_theta_prop - theta_log_targ + q_term:
             theta = theta_proposed
             theta_log_targ = log_theta_prop
             hits += 1
@@ -62,6 +73,32 @@ def symm_metropolis_hasting(
         return ret_thetas, acceptance_rate
 
     return ret_thetas
+
+
+def symm_metropolis_hasting(
+        initial_theta: float,
+        num_samples: int,
+        log_target: t.Callable[[float], float],
+        proposal_sampler: t.Callable[[float], float],
+        discard_warm_up: bool = True,
+        warm_up_frac: float = 0.5,
+        verbose: bool = False,
+        return_acceptance_rate: bool = False,
+        random_state: t.Optional[int] = None) -> np.ndarray:
+    """Symmetric case of Metropolis-Hasting algorithm."""
+    ret = metropolis_hasting(
+        initial_theta=initial_theta,
+        num_samples=num_samples,
+        log_target=log_target,
+        proposal_sampler=proposal_sampler,
+        proposal_log_density=None,
+        discard_warm_up=discard_warm_up,
+        warm_up_frac=warm_up_frac,
+        verbose=verbose,
+        return_acceptance_rate=return_acceptance_rate,
+        random_state=random_state)
+
+    return ret
 
 
 def _experiment() -> None:
