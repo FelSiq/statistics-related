@@ -7,7 +7,7 @@ import typing as t
 import numpy as np
 
 
-def sample_normal(num_inst: int,
+def sample_normal(num_inst: int = 1,
                   loc: float = 0.0,
                   scale: float = 1.0,
                   random_state: t.Optional[int] = None) -> np.ndarray:
