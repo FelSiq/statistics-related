@@ -7,7 +7,10 @@ import typing as t
 import numpy as np
 
 
-def sample_normal(num_inst: int, loc: float = 0.0, scale: float = 1.0, random_state: t.Optional[int] = None) -> np.ndarray:
+def sample_normal(num_inst: int,
+                  loc: float = 0.0,
+                  scale: float = 1.0,
+                  random_state: t.Optional[int] = None) -> np.ndarray:
     """Sample ``num_inst`` instances from normal distribution.
 
     Arguments
@@ -16,7 +19,7 @@ def sample_normal(num_inst: int, loc: float = 0.0, scale: float = 1.0, random_st
         Number of samples to output.
 
     loc : :obj:`float`
-       Mean of the normal distribution. 
+       Mean of the normal distribution.
 
     scale : :obj:`float`
         Standard deviation (not the variance!) of the normal distribution.
@@ -46,7 +49,7 @@ def sample_normal(num_inst: int, loc: float = 0.0, scale: float = 1.0, random_st
         remove_extra_inst = True
 
     uniform_samples = np.random.uniform(0, 1, size=(2, num_inst // 2))
-    
+
     aux_1 = np.sqrt(-2 * np.log(uniform_samples[0, :]))
     aux_2 = 2 * np.pi * uniform_samples[1, :]
 
@@ -63,7 +66,6 @@ def sample_normal(num_inst: int, loc: float = 0.0, scale: float = 1.0, random_st
 def _test():
     import matplotlib.pyplot as plt
     import scipy.stats
-
 
     plt.subplot(1, 2, 1)
     vals = np.linspace(-4, 4, 100)
