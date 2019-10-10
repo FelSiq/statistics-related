@@ -7,13 +7,15 @@ import autograd.numpy as np
 
 
 def hmc(initial_theta: np.ndarray,
-        log_target: t.Callable[[np.ndarray], float],
+        target_logpdf: t.Callable[[np.ndarray], float],
         num_samples: int = 200,
         num_leapfrog_steps: int = 50,
         step_size: float = 0.1,
         burnout_frac: float = 0.5,
         random_state: t.Optional[int] = None,
-        verbose: bool = False) -> np.ndarray:
+        verbose: bool = False,
+        return_acc_rate: bool = False
+        ) -> t.Union[np.ndarray, t.Tuple[np.ndarray, float]]:
     """Hamiltonian Monte Carlo implementation.
 
     Arguments
@@ -21,7 +23,7 @@ def hmc(initial_theta: np.ndarray,
     initial_theta : :obj:`np.ndarray`
         Initial values for the Markov Chain.
 
-    log_target : :obj:`t.Callable`
+    target_logpdf : :obj:`t.Callable`
         Log-density target function. Must receive a :obj:`np.ndarray`
         as the first argument, and return the natural (base-e) logarithm
         of the probability density evaluated at the given point as the
@@ -51,6 +53,9 @@ def hmc(initial_theta: np.ndarray,
     verbose : :obj:`bool`, optional
         Enable priting of additional information about the HMC process.
 
+    return_acc_rate : :obj:`bool`, optional
+        If True, return also the acceptance rate of the HMC process.
+
     Returns
     -------
     :obj:`np.ndarray`
@@ -70,6 +75,21 @@ def hmc(initial_theta: np.ndarray,
         energy_total = energy_kinetic + energy_potential
         return energy_total
 
+    def leapfrog_integration(
+            theta: np.ndarray, theta_grad: np.ndarray,
+            momentum: np.ndarray) -> t.Tuple[np.ndarray, np.ndarray]:
+        """Perform Leapfrog Integration."""
+        theta_new = theta_cur
+        grad_new = theta_cur_grad
+
+        for _ in np.arange(num_leapfrog_steps):
+            momentum += step_size * 0.5 * grad_new
+            theta_new += step_size * momentum
+            grad_new = grad_fun(theta_new)
+            momentum += step_size * 0.5 * grad_new
+
+        return theta_new, grad_new
+
     if not 0 <= burnout_frac < 1:
         raise ValueError("'burnout_frac' must be in [0, 1) interval.")
 
@@ -80,11 +100,11 @@ def hmc(initial_theta: np.ndarray,
         np.random.seed(random_state)
 
     thetas = np.zeros((num_samples, initial_theta.size))
-    grad_fun = autograd.grad(log_target)
+    grad_fun = autograd.grad(target_logpdf)
 
     theta_cur = np.copy(initial_theta)
     theta_cur_grad = grad_fun(theta_cur)
-    theta_logtarget_cur = log_target(theta_cur)
+    theta_logtarget_cur = target_logpdf(theta_cur)
     hits = 0
 
     for sample_id in np.arange(num_samples):
@@ -92,19 +112,14 @@ def hmc(initial_theta: np.ndarray,
         total_energy_initial = calc_total_energy(
             momentum=momentum, theta_logtarget=theta_logtarget_cur)
 
-        theta_new = theta_cur
-        grad_new = theta_cur_grad
-        for _ in np.arange(num_leapfrog_steps):
-            momentum += step_size * 0.5 * grad_new
-            theta_new += step_size * momentum
-            grad_new = grad_fun(theta_new)
-            momentum += step_size * 0.5 * grad_new
+        theta_new, grad_new = leapfrog_integration(
+            theta=theta_cur, theta_grad=theta_cur_grad, momentum=momentum)
 
-        theta_logtarget_new = log_target(theta_new)
+        theta_logtarget_new = target_logpdf(theta_new)
         total_energy_final = calc_total_energy(
             momentum=momentum, theta_logtarget=theta_logtarget_new)
 
-        delta_energy = total_energy_final - total_energy_initial
+        delta_energy = total_energy_initial - total_energy_final
         if np.log(np.random.uniform(0, 1)) < delta_energy:
             theta_cur = theta_new
             theta_cur_grad = grad_new
@@ -113,25 +128,32 @@ def hmc(initial_theta: np.ndarray,
 
         thetas[sample_id, :] = theta_cur
 
+    acc_rate = hits / num_samples
+
     if verbose:
-        acc_rate = hits / num_samples
         print("Acceptance ratio: {:.4f}".format(acc_rate))
 
     burnout_ind = int(np.ceil(num_samples * burnout_frac))
-    return thetas[burnout_ind:]
+    thetas = thetas[burnout_ind:]
+
+    if return_acc_rate:
+        return thetas, acc_rate
+
+    return thetas
 
 
 def _test():
     import matplotlib.pyplot as plt
-    random_state = 16
+    random_state = 32
 
     def log_sphere(theta):
         return -20 * np.square(np.linalg.norm(theta, ord=2) - 10)
 
     thetas = hmc(
         initial_theta=[3.0, 0.0],
-        log_target=log_sphere,
+        target_logpdf=log_sphere,
         random_state=random_state,
+        num_leapfrog_steps=50,
         step_size=0.2,
         verbose=True)
 
