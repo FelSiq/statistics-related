@@ -79,8 +79,8 @@ def hmc(initial_theta: np.ndarray,
             theta: np.ndarray, theta_grad: np.ndarray,
             momentum: np.ndarray) -> t.Tuple[np.ndarray, np.ndarray]:
         """Perform Leapfrog Integration."""
-        theta_new = theta_cur
-        grad_new = theta_cur_grad
+        theta_new = theta
+        grad_new = theta_grad
 
         for _ in np.arange(num_leapfrog_steps):
             momentum += step_size * 0.5 * grad_new
