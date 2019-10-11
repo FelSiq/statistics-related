@@ -132,6 +132,8 @@ def hmc(initial_theta: np.ndarray,
 
     if verbose:
         print("Acceptance ratio: {:.4f}".format(acc_rate))
+        print("Theoretically expected: [0.6, 0.8] (results may be {}.)"
+              .format("optimal" if 0.6 <= acc_rate <= 0.8 else "not optimal"))
 
     burnout_ind = int(np.ceil(num_samples * burnout_frac))
     thetas = thetas[burnout_ind:]
