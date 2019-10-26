@@ -14,6 +14,9 @@ def log_sum_exp(vals: np.ndarray,
     if shift_coeff is None:
         shift_coeff = np.max(vals)
 
+    if np.isinf(shift_coeff):
+        return np.inf
+
     return shift_coeff + np.log(np.sum(np.exp(vals - shift_coeff)))
 
 
