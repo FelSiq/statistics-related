@@ -12,17 +12,20 @@ def bootstrap(population: np.ndarray,
 
     Arguments
     ---------
+    population : :obj:`np.ndarray`
+        Population to draw samples from.
+
+    num_samples : :obj:`int`
+        Number of pseudo-datasets generated.
+
     prop : :obj:`float`
         Proportion between the size of ``population`` and the sampled
         population. Must be in (0.0, 1.0] interval.
 
-    n : :obj:`int`
-        Number of pseudo-datasets generated.
-
     random_state : :obj:`int`, optional
         If given, set the random seed before the first iteration.
 
-    Returns
+    Yields
     -------
     :obj:`np.ndarray`
         Sample of ``population`` constructed via bootstrap technique.
