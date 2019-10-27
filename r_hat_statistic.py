@@ -66,7 +66,7 @@ def r_hat_stat(chains: np.ndarray, verbose: bool = False) -> float:
     if chains.ndim == 3:
         r_hats = np.array([
             _r_hat_stat(chains[:, :, ind_comp])
-            for ind_comp in np.arange(chains.ndim)
+            for ind_comp in np.arange(chains.shape[2])
         ])
 
         if verbose:
