@@ -34,7 +34,8 @@ def symm_parallel_metropolis_hasting(
     theta_log_targ = np.array([
         log_target(cur_theta, cur_beta)
         for cur_theta, cur_beta in zip(theta, betas)
-    ], dtype=np.float)
+    ],
+                              dtype=np.float)
 
     if isinstance(initial_theta, (int, float, np.number)):
         thetas = np.zeros((num_samples, betas.size), dtype=np.float)
@@ -334,7 +335,98 @@ def _experiment_03():
     print("E_{1}[Theta_2]:", np.mean(samples[:, -1, 1]))
 
 
+def _experiment_04():
+    import matplotlib.pyplot as plt
+
+    def ltarget1(x):
+        """Bimodal uniform distribution."""
+        if 1 < np.abs(x) and np.abs(x) < 2:
+            return 0
+        else:
+            return -np.inf
+
+    def sample_q1(x, c):
+        """
+        Note: 'c' must be a value stricly larger then 2.0 to convergence.
+
+        This happens due to the spacing (of length 2) between the two
+        modes of the target distribution.
+        """
+        return x + np.random.uniform(-c, c)
+
+    random_seed = 16
+
+    thetas_conv = symm_metropolis_hasting(
+        initial_theta=-0.1,
+        num_samples=20000,
+        log_target=ltarget1,
+        proposal_sampler=lambda x: sample_q1(x, 2.5),
+        discard_warm_up=True,
+        verbose=True,
+        random_state=random_seed)
+
+    thetas_div = symm_metropolis_hasting(
+        initial_theta=-0.1,
+        num_samples=20000,
+        log_target=ltarget1,
+        proposal_sampler=lambda x: sample_q1(x, 2.0),
+        discard_warm_up=True,
+        verbose=True,
+        random_state=2 * random_seed)
+
+    test_vals = np.linspace(-3, 3, 100)
+
+    plt.subplot(1, 2, 1)
+    plt.plot(test_vals, np.exp([ltarget1(x) for x in test_vals]))
+    plt.hist(thetas_conv[::10], bins=64, density=True)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(test_vals, np.exp([ltarget1(x) for x in test_vals]))
+    plt.hist(thetas_div[::10], bins=64, density=True)
+
+    plt.show()
+
+
+def _experiment_05():
+    import matplotlib.pyplot as plt
+
+    def lnormpdf(x, mu, sigma):
+        """Returns the log of normal pdf with mean mu and sd sigma, evaluated at x"""
+        return -0.5 * np.log(
+            2 * np.pi * sigma**2) - 0.5 * (x - mu)**2 / sigma**2
+
+    def ltarget6(x):
+        return -np.abs(x)
+
+    def eval_logq6(xp, x):
+        return lnormpdf(xp, x, 1)
+
+    def sample_q6(x):
+        return x + np.random.normal(0, 1) + np.random.normal(1, 1)
+
+    random_seed = 16
+
+    thetas = metropolis_hasting(
+        initial_theta=0.0,
+        num_samples=100000,
+        log_target=ltarget6,
+        proposal_log_density=eval_logq6,
+        proposal_sampler=sample_q6,
+        discard_warm_up=True,
+        verbose=True,
+        random_state=random_seed)
+
+    test_vals = np.linspace(-4, 4, 100)
+
+    plt.plot(test_vals, np.exp([ltarget6(x) for x in test_vals]))
+    plt.hist(thetas[::10], bins=128, density=True)
+
+    plt.show()
+
+
 if __name__ == "__main__":
-    _experiment_01()
-    _experiment_02()
-    _experiment_03()
+    # _experiment_01()
+    # _experiment_02()
+    # _experiment_03()
+    # _experiment_04()
+    _experiment_05()
