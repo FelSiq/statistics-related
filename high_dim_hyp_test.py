@@ -13,11 +13,11 @@ def bonferroni(pvalues: np.ndarray,
     ---------
     pvalues : :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`float`
         Numpy array with of p-values extracted from the statistical
-        test.
+        tests.
 
     threshold : :obj:`float`, optional
         Threshold, also known as ``significance level`` or ``Type I error
-        rate``. The value used as threshold t to reject the null hypothesis
+        rate``. The value used as threshold $t$ to reject the null hypothesis
         of each p-value $p_{i}$ iff $p_{i} < t$.
 
     return_array: :obj:`bool`, optional
@@ -29,7 +29,7 @@ def bonferroni(pvalues: np.ndarray,
     -------
     If ``return_array`` is False:
         :obj:`int`
-            Number of discoveries/statistically significant tests with
+            Number of discoveries (statistically significant) tests with
             the Bonferroni correction.
     Else:
         :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`bool`
@@ -55,11 +55,11 @@ def holm(pvalues: np.ndarray,
     ---------
     pvalues : :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`float`
         Numpy array with of p-values extracted from the statistical
-        test.
+        tests.
 
     threshold : :obj:`float`, optional
         Threshold, also known as ``significance level`` or ``Type I error
-        rate``. The value used as threshold t to reject the null hypothesis
+        rate``. The value used as threshold $t$ to reject the null hypothesis
         of each p-value $p_{i}$ iff $p_{i} < t$.
 
     return_array: :obj:`bool`, optional
@@ -71,7 +71,7 @@ def holm(pvalues: np.ndarray,
     -------
     If ``return_array`` is False:
         :obj:`int`
-            Number of discoveries/statistically significant tests with
+            Number of discoveries (statistically significant) tests with
             the Holm correction.
     Else:
         :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`bool`
@@ -107,15 +107,20 @@ def benjamini_hochberg(pvalues: np.ndarray,
                        return_array: bool = False) -> t.Union[int, np.ndarray]:
     """Uses the Benjamini-Hochberg correction to hypothesis testing.
 
+    This is an False Discovery Rate (FDR) controlling algorithm, and
+    works only if the test statistics related to the given p-values are
+    independent. If this is not the case, use the ``Benjamini-Yekutieli``
+    corrected algorithm.
+
     Arguments
     ---------
     pvalues : :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`float`
         Numpy array with of p-values extracted from the statistical
-        test.
+        tests.
 
     threshold : :obj:`float`, optional
         Threshold, also known as ``significance level`` or ``Type I error
-        rate``. The value used as threshold t to reject the null hypothesis
+        rate``. The value used as threshold $t$ to reject the null hypothesis
         of each p-value $p_{i}$ iff $p_{i} < t$.
 
     return_array: :obj:`bool`, optional
@@ -127,7 +132,7 @@ def benjamini_hochberg(pvalues: np.ndarray,
     -------
     If ``return_array`` is False:
         :obj:`int`
-            Number of discoveries/statistically significant tests with
+            Number of discoveries (statistically significant) tests with
             the FDR rate controlled by Benjamini-Hochberg correction.
     Else:
         :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`bool`
@@ -163,15 +168,21 @@ def benjamini_yekutieli(pvalues: np.ndarray,
                         ) -> t.Union[int, np.ndarray]:
     """Uses the Benjamini-Yekutieli correction to hypothesis testing.
 
+    This is an False Discovery Rate (FDR) controlling algorithm. This
+    Benjamini-Yekutieli corrected version, unlike the Benjamini-Hochberg
+    version, always controls de FDR at level of the ``threshold``,
+    independently of independence of test statistics related to the given
+    p-values.
+
     Arguments
     ---------
     pvalues : :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`float`
         Numpy array with of p-values extracted from the statistical
-        test.
+        tests.
 
     threshold : :obj:`float`, optional
         Threshold, also known as ``significance level`` or ``Type I error
-        rate``. The value used as threshold t to reject the null hypothesis
+        rate``. The value used as threshold $t$ to reject the null hypothesis
         of each p-value $p_{i}$ iff $p_{i} < t$.
 
     return_array: :obj:`bool`, optional
@@ -183,7 +194,7 @@ def benjamini_yekutieli(pvalues: np.ndarray,
     -------
     If ``return_array`` is False:
         :obj:`int`
-            Number of discoveries/statistically significant tests with
+            Number of discoveries (statistically significant) tests with
             the FDR rate controlled by Benjamini-Yekutieli correction.
     Else:
         :obj:`np.ndarray` shape = (test_num,), dtype = :obj:`bool`
@@ -209,6 +220,46 @@ def benjamini_yekutieli(pvalues: np.ndarray,
 
     return benjamini_hochberg(
         pvalues=pvalues, threshold=mod_threshold, return_array=return_array)
+
+
+def fdr_estimation(pvalues: np.ndarray,
+                   threshold: float = 0.05,
+                   lambda_: float = 0.5) -> float:
+    """Estimate the False Discovery Rate (FDR) of ``pvalues`` at ``threshold`` level.
+
+    Arguments
+    ---------
+    pvalues : :obj:`np.ndarray`
+        Numpy array with of p-values extracted from the statistical
+        tests.
+
+    threshold : :obj:`float`, optional
+        Threshold, also known as ``significance level`` or ``Type I error
+        rate``. The value used as threshold $t$ to reject the null hypothesis
+        of each p-value $p_{i}$ iff $p_{i} < t$.
+
+    lambda_ : :obj:`float`, optional
+
+    Returns
+    -------
+    :obj:`float`
+        False Discovery Rate (FDR) estimation in function of ``threshold``
+        and ``lambda_``.
+    """
+    if not 0 <= threshold <= 1:
+        raise ValueError(
+            "'threshold' must be in [0, 1] range (got {}.)".format(threshold))
+
+    if not 0 <= lambda_ <= 1:
+        raise ValueError(
+            "'lambda_' must be in [0, 1] range (got {}.)".format(lambda_))
+
+    if lambda_ == 1.0:
+        return 0.0
+
+    disc_num = max(1, np.sum(pvalues <= threshold))
+
+    return (threshold / (1 - lambda_)) * (np.sum(pvalues > lambda_) / disc_num)
 
 
 def _test_bonf() -> None:
@@ -283,8 +334,40 @@ def _test_by() -> None:
     print("\rBenjamini-Yekutieli test finished successfully.")
 
 
+def _test_fdr() -> None:
+    import matplotlib.pyplot as plt
+    np.random.seed(16)
+
+    threshold = 0.05
+
+    num_null = 800
+    num_alt = 200
+    pvals = np.concatenate((
+        np.random.exponential(scale=1 / 32, size=num_alt),
+        np.random.random(size=num_null),
+    ))
+
+    lambda_vals = np.linspace(0, 1, 100)
+    vals = np.array([
+        fdr_estimation(pvalues=pvals, threshold=threshold, lambda_=l)
+        for l in lambda_vals
+    ])
+
+    plt.subplot(121)
+    plt.hist(pvals, bins=64)
+    plt.title("P-values histogram")
+
+    plt.subplot(122)
+    plt.plot(lambda_vals, vals, linestyle="-")
+    plt.title("Significance level: {}".format(threshold))
+    plt.ylabel("False Discovery Rate (FDR)")
+    plt.xlabel("Lambda parameter")
+    plt.show()
+
+
 if __name__ == "__main__":
     _test_bonf()
     _test_holm()
     _test_bh()
     _test_by()
+    _test_fdr()
