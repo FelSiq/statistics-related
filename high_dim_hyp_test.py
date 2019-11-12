@@ -102,10 +102,9 @@ def holm(pvalues: np.ndarray,
     return np.sum(tests)
 
 
-def benjamini_hochberg(
-        pvalues: np.ndarray,
-        threshold: float = 0.05,
-        return_array: bool = False) -> t.Union[int, np.ndarray]:
+def benjamini_hochberg(pvalues: np.ndarray,
+                       threshold: float = 0.05,
+                       return_array: bool = False) -> t.Union[int, np.ndarray]:
     """Uses the Benjamini-Hochberg correction to hypothesis testing.
 
     Arguments
@@ -143,7 +142,9 @@ def benjamini_hochberg(
     tests = np.zeros(pvalues.size, dtype=bool)
 
     try:
-        max_ind = np.max(np.argwhere(pvalues <= threshold * np.arange(1, 1 + pvalues.size) / pvalues.size))
+        max_ind = np.max(
+            np.argwhere(pvalues <= threshold * np.arange(1, 1 + pvalues.size) /
+                        pvalues.size))
 
     except ValueError:
         return tests
@@ -156,10 +157,10 @@ def benjamini_hochberg(
     return np.sum(tests)
 
 
-def benjamini_yekutieli(
-        pvalues: np.ndarray,
-        threshold: float = 0.05,
-        return_array: bool = False) -> t.Union[int, np.ndarray]:
+def benjamini_yekutieli(pvalues: np.ndarray,
+                        threshold: float = 0.05,
+                        return_array: bool = False
+                        ) -> t.Union[int, np.ndarray]:
     """Uses the Benjamini-Yekutieli correction to hypothesis testing.
 
     Arguments
@@ -202,11 +203,12 @@ def benjamini_yekutieli(
         Where $\gamma$ is the Euler-Mascheroni constant.
         """
         gamma = 0.57721566490153286060651209008240243104215933593992
-        return gamma + np.log(n) + 0.5 / n - 1./ (12 * n ** 2) + 1. / (120 * n ** 4)
+        return gamma + np.log(n) + 0.5 / n - 1 / (12 * n**2) + 1 / (120 * n**4)
 
     mod_threshold = threshold / _harmonic_number(n=pvalues.size)
 
-    return benjamini_hochberg(pvalues=pvalues, threshold=mod_threshold, return_array=return_array)
+    return benjamini_hochberg(
+        pvalues=pvalues, threshold=mod_threshold, return_array=return_array)
 
 
 def _test_bonf() -> None:
@@ -220,7 +222,9 @@ def _test_bonf() -> None:
             pvals, alpha=0.05, method="bonferroni")[0]
         res_b = bonferroni(pvals, threshold=0.05, return_array=True)
         assert np.allclose(res_a, res_b)
-        print("\rBonferroni test {}%...".format(100 * (1 + i) / num_tests), end="")
+        print(
+            "\rBonferroni test {}%...".format(100 * (1 + i) / num_tests),
+            end="")
 
     print("\rBonferroni test successfully.")
 
@@ -252,7 +256,10 @@ def _test_bh() -> None:
             pvals, alpha=0.05, method="fdr_bh")[0]
         res_b = benjamini_hochberg(pvals, threshold=0.05, return_array=True)
         assert np.allclose(res_a, res_b)
-        print("\rBenjamini-Hochberg test {}%...".format(100 * (1 + i) / num_tests), end="")
+        print(
+            "\rBenjamini-Hochberg test {}%...".format(
+                100 * (1 + i) / num_tests),
+            end="")
 
     print("\rBenjamini-Hochberg test finished successfully.")
 
@@ -268,7 +275,10 @@ def _test_by() -> None:
             pvals, alpha=0.05, method="fdr_by")[0]
         res_b = benjamini_yekutieli(pvals, threshold=0.05, return_array=True)
         assert np.allclose(res_a, res_b)
-        print("\rBenjamini-Yekutieli test {}%...".format(100 * (1 + i) / num_tests), end="")
+        print(
+            "\rBenjamini-Yekutieli test {}%...".format(
+                100 * (1 + i) / num_tests),
+            end="")
 
     print("\rBenjamini-Yekutieli test finished successfully.")
 
