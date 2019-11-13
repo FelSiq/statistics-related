@@ -147,11 +147,11 @@ def benjamini_hochberg(pvalues: np.ndarray,
     tests = np.zeros(pvalues.size, dtype=bool)
 
     try:
-        max_ind = np.max(
-            np.argwhere(pvalues <= threshold * np.arange(1, 1 + pvalues.size) /
-                        pvalues.size))
+        max_ind = np.nonzero(
+            pvalues <= threshold * np.arange(1, 1 + pvalues.size) /
+            pvalues.size)[0][-1]
 
-    except ValueError:
+    except IndexError:
         return tests
 
     tests[sorted_ind[:(1 + max_ind)]] = True
