@@ -215,10 +215,10 @@ def benjamini_yekutieli(pvalues: np.ndarray,
                       - \frac{1}{12n^{2}}
                       + \frac{1}{120n^{4}}
         $$$
-        Where $\gamma$ is the Euler-Mascheroni constant.
+        Where $\gamma$ is the Euler-Mascheroni constant, also known as
+        ``Euler constant.``
         """
-        euler_masch_const = 0.57721566490153286060651209008240243104215933593992
-        harm_num = (euler_masch_const + np.log(n) + 0.5 / n - 1 / (12 * n**2) +
+        harm_num = (np.euler_gamma + np.log(n) + 0.5 / n - 1 / (12 * n**2) +
                     1 / (120 * n**4))
         return harm_num
 
