@@ -209,12 +209,18 @@ def benjamini_yekutieli(pvalues: np.ndarray,
         $H_{n}$ is calculated as $H_{n} = \sum_{i=1}^{n}\frac{1}{i}$, but
         can be approximated with
         $$$
-        H_{n} \approx \log(n) + \gamma - \frac{1}{2n} + \frac{1}{120n}
+        H_{n} \approx \log(n)
+                      + \gamma
+                      + \frac{1}{2n}
+                      - \frac{1}{12n^{2}}
+                      + \frac{1}{120n^{4}}
         $$$
         Where $\gamma$ is the Euler-Mascheroni constant.
         """
-        gamma = 0.57721566490153286060651209008240243104215933593992
-        return gamma + np.log(n) + 0.5 / n - 1 / (12 * n**2) + 1 / (120 * n**4)
+        euler_masch_const = 0.57721566490153286060651209008240243104215933593992
+        harm_num = (euler_masch_const + np.log(n) + 0.5 / n - 1 / (12 * n**2) +
+                    1 / (120 * n**4))
+        return harm_num
 
     mod_threshold = threshold / _harmonic_number(n=pvalues.size)
 
