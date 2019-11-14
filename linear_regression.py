@@ -25,10 +25,24 @@ class LinRegressor:
         self.conf_int_intercept = None  # type: np.ndarray
         self.conf_int_reg_coeff = None  # type: np.ndarray
 
+        self.t_test_pval_intercept = None  # type: float
+        self.t_test_pval_reg_coeff = None  # type: float
+
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
         return np.sqrt(np.sum(np.square(y_true - y_pred)) / y_true.size)
+
+    @staticmethod
+    def _ttest(t_stat_val: float, df: float) -> float:
+        """Calculate the p-value from the t-student test."""
+        return 2.0 * scipy.stats.t(df=df).sf(np.abs(t_stat_val))
+
+    def _calc_f_stat(self) -> None:
+        """Calculate the F-statistic."""
+
+    def _calc_r_sqr_stat(self) -> None:
+        """Calculate the $R^{2}$ statistic."""
 
     def _calc_errs(self, X: np.ndarray, x_mean: np.ndarray) -> None:
         """Calculate errors related to the fitted data."""
@@ -36,6 +50,9 @@ class LinRegressor:
 
         self.sqr_err_residual = self.residual_sqr_sum / (
             self.residuals.size - 2)
+
+        # Note: RSE (Root Standard Error) is a measure of
+        # 'lack of fit' of the model to the data
         self.std_err_residual = np.sqrt(self.sqr_err_residual)
 
         _aux = np.sum(np.square(X - x_mean))
@@ -55,6 +72,11 @@ class LinRegressor:
 
         self.t_stat_intercept = self.intercept / self.std_err_intercept
         self.t_stat_reg_coeff = self.reg_coeff / self.std_err_reg_coeff
+
+        self.t_test_pval_intercept = self._ttest(
+            t_stat_val=self.t_stat_intercept, df=self.residuals.size - 1)
+        self.t_test_pval_reg_coeff = self._ttest(
+            t_stat_val=self.t_stat_reg_coeff, df=self.residuals.size - 1)
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
@@ -210,7 +232,9 @@ def _test_univar_lin_reg_02() -> None:
     print("95% intercept conf interval:", model.conf_int_intercept)
     print("95% regCoeff conf interval:", model.conf_int_reg_coeff)
     print("t-stat intercept", model.t_stat_intercept)
-    print("t-stat reg_coeff", model.t_stat_reg_coeff)
+    print("t-stat regCoeff", model.t_stat_reg_coeff)
+    print("t-stat p-value intercept", model.t_test_pval_intercept)
+    print("t-stat p-value regCoeff", model.t_test_pval_reg_coeff)
 
 
 if __name__ == "__main__":
