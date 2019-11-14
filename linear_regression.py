@@ -62,7 +62,7 @@ class LinRegressor:
     def _calc_f_stat(self) -> None:
         """Calculate the F-statistic."""
 
-    def _calc_r_sqr_stat(self) -> None:
+    def _calc_r_sqr_stat(self) -> float:
         r"""Calculate the $R^{2}$ statistic.
 
         The $R^{2}$ statistic is calculated as
@@ -200,8 +200,8 @@ class LinRegressor:
         return vals * self.reg_coeff + self.intercept
 
 
-class MultivarLinRegressor:
-    """Simple algorithm to fit multivariate linear regression model."""
+class MultipleLinRegressor:
+    """Simple algorithm to fit Multiple Linear Regression model."""
 
     def __init__(self):
         """Fit multivariate linear regression models."""
@@ -221,22 +221,28 @@ class MultivarLinRegressor:
 
         return np.hstack((X, np.ones((_num_inst, 1))))
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> "MultivarLinRegressor":
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "MultipleLinRegressor":
         """Fit data into model, calculating the corresponding coefficients."""
         if y.ndim == 1:
             y = y.reshape(-1, 1)
 
-        X_aug = MultivarLinRegressor._augment_x(X)
+        X_aug = MultipleLinRegressor._augment_x(X)
 
         _M = np.matmul(X_aug.T, X_aug)
         _Y = np.matmul(X_aug.T, y)
+
+        # Note: the interpretation of the coefficients related to some
+        # dependent variable (i.e., all coefficients other than the
+        # intercept) is 'the average effect on Y for a one unit increase in
+        # the corresponding X, while kept all other independent variables
+        # fixed.'
         self.coeffs = np.linalg.solve(_M, _Y)
 
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Use the fitted model to predict unknown values."""
-        return np.matmul(MultivarLinRegressor._augment_x(X), self.coeffs)
+        return np.matmul(MultipleLinRegressor._augment_x(X), self.coeffs)
 
 
 def _test_univar_lin_reg_01() -> None:
