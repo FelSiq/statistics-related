@@ -1,5 +1,6 @@
 """Simple implementation of Linear Regression."""
 import numpy as np
+import scipy.stats
 
 import cross_validation
 
@@ -21,6 +22,9 @@ class LinRegressor:
         self.std_err_intercept = None  # type: float
         self.std_err_reg_coeff = None  # type: float
 
+        self.conf_int_intercept = None  # type: np.ndarray
+        self.conf_int_reg_coeff = None  # type: np.ndarray
+
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
@@ -41,6 +45,16 @@ class LinRegressor:
             (1.0 / self.residuals.size + np.square(x_mean) / _aux))
 
         self.std_err_reg_coeff = np.sqrt(self.sqr_err_residual / _aux)
+
+        _t_dist_int = np.asarray(
+            scipy.stats.t.interval(alpha=0.975, df=self.residuals.size - 2),
+            dtype=float)
+
+        self.conf_int_intercept = self.intercept + _t_dist_int * self.std_err_intercept
+        self.conf_int_reg_coeff = self.reg_coeff + _t_dist_int * self.std_err_reg_coeff
+
+        self.t_stat_intercept = self.intercept / self.std_err_intercept
+        self.t_stat_reg_coeff = self.reg_coeff / self.std_err_reg_coeff
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
@@ -193,8 +207,12 @@ def _test_univar_lin_reg_02() -> None:
     print("ErrIntercept:", model.std_err_intercept)
     print("RegCoef:", model.reg_coeff)
     print("ErrCoef:", model.std_err_reg_coeff)
+    print("95% intercept conf interval:", model.conf_int_intercept)
+    print("95% regCoeff conf interval:", model.conf_int_reg_coeff)
+    print("t-stat intercept", model.t_stat_intercept)
+    print("t-stat reg_coeff", model.t_stat_reg_coeff)
 
 
 if __name__ == "__main__":
-    _test_univar_lin_reg_01()
+    # _test_univar_lin_reg_01()
     _test_univar_lin_reg_02()
