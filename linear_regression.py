@@ -16,7 +16,7 @@ class LinRegressor:
         self.intercept = None  # type: np.ndarray
         self.residuals = None  # type: np.ndarray
 
-        self.residual_sqr_sum = None  # type: float
+        self.residual_sum_sqr = None  # type: float
         self.std_err_residual = None  # type: float
         self.sqr_err_residual = None  # type: float
         self.std_err_intercept = None  # type: float
@@ -28,6 +28,8 @@ class LinRegressor:
         self.t_test_pval_intercept = None  # type: float
         self.t_test_pval_reg_coeff = None  # type: float
 
+        self.r_sqr_stat = None  # type: float
+
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
@@ -38,22 +40,90 @@ class LinRegressor:
         """Calculate the p-value from the t-student test."""
         return 2.0 * scipy.stats.t(df=df).sf(np.abs(t_stat_val))
 
+    def _calc_rse(self) -> float:
+        """Calculate the Residual Standard Error (RSE).
+
+        Notes
+        -----
+        The RSE is a measure of ``lack of fit of the model to the data.``
+        Therefore, the greater is the RSE, the worse the model fit to
+        the training data. However, the RSE is not unit-less (more
+        precisely, its units is the same as the dependent variable),
+        which means that it is problem dependent, and it is not always
+        easy to define which is a ``good/low RSE.``
+        """
+        self.sqr_err_residual = self.residual_sum_sqr / (
+            self.residuals.size - 2)
+
+        self.std_err_residual = np.sqrt(self.sqr_err_residual)
+
+        return self.std_err_residual
+
     def _calc_f_stat(self) -> None:
         """Calculate the F-statistic."""
 
     def _calc_r_sqr_stat(self) -> None:
-        """Calculate the $R^{2}$ statistic."""
+        r"""Calculate the $R^{2}$ statistic.
 
-    def _calc_errs(self, X: np.ndarray, x_mean: np.ndarray) -> None:
+        The $R^{2}$ statistic is calculated as
+        $$
+        R^{2} = \frac{\text{TSS} - \text{RSS}}{\text{TSS}}
+              = 1.0 - \frac{\text{RSS}}{\text{TSS}}
+        $$
+        where ``TSS`` is the Total Sum of Squares defined as
+        $$
+        \text{TSS} = \sum_{i=1}^{n}(y_{i} - \bar{y})^{2}
+        $$
+        where $\bar{y} = \frac{1}{n}\sum_{i=1}^{n}y_{i}$ is the mean value of
+        the dependent variable, and it calculates the total of variability
+        inherently in the dependent variable (independently of the regression
+        results), and ``RSS`` is the Residual Sum of Squares defined as
+        $$
+        \text{RSS} = \sum_{i=1}^{n}\epsilon^{2}
+                   = \sum_{i=1}^{n}(y_{i} - \hat{y}_{i})^{2}
+                   = \sum_{i=1}^{n}(y_{i} - (\beta_{0} + \beta_{1}x_{i}))^{2}
+        $$
+        where $y_{i}$ is the true value of the $i$th dependent variable, and
+        $x_{i}$ is the value of the $i$th independent variable.
+
+        It calculates the proportion of variability in the dependent variable
+        can be explained using the independent variable.
+
+        The range of this statistic is [0, 1], where 1.0 means that all
+        variance in the dependent variable $y$ was explained by the
+        independent variable $x$, after regressing $y$ onto $x$. This
+        statistic is unit-less.
+
+        Notes
+        -----
+        Just like the RSE (Residual Standard Error), it is difficult to
+        select a ``good/high value for the $R^{2}$ statistic.``, as it varies
+        among different applications and subjects.
+
+        In the scenario where there is a single independent variable, then
+        $R^{2} = r^{2} = \text{COR(x, y)}^{2}$, where $r = COR(x, y)$ is the
+        Person correlation coefficient.
+        """
+        self.r_sqr_stat = 1.0 - self.residual_sum_sqr / self.total_sum_sqr
+
+        return self.r_sqr_stat
+
+    def _calc_errs(self, X: np.ndarray, y: np.ndarray, x_mean: float,
+                   y_mean: float) -> None:
         """Calculate errors related to the fitted data."""
-        self.residual_sqr_sum = np.sum(np.square(self.residuals))
+        # TSS (Total Sum of Squares) measures the total variance in the
+        # dependent variable. It is the variability inherent in y before
+        # the regression is even performed.
+        # Source: ISLR (7th ed.), page 70 (Chap.3 - Linear Regression)
+        self.total_sum_sqr = np.sum(np.square(y - y_mean))
 
-        self.sqr_err_residual = self.residual_sqr_sum / (
-            self.residuals.size - 2)
+        # RSS (Residual Sum of Squares) measures the amount of variability
+        # that is left unexplained after performing the regression.
+        # Source: ISLR (7th ed.), page 70 (Chap.3 - Linear Regression)
+        self.residual_sum_sqr = np.sum(np.square(self.residuals))
 
-        # Note: RSE (Root Standard Error) is a measure of
-        # 'lack of fit' of the model to the data
-        self.std_err_residual = np.sqrt(self.sqr_err_residual)
+        self._calc_rse()
+        self._calc_r_sqr_stat()
 
         _aux = np.sum(np.square(X - x_mean))
 
@@ -105,7 +175,7 @@ class LinRegressor:
         # Note: residuals are estimation of the true irredutible errors
         self.residuals = y - self.predict(X)
 
-        self._calc_errs(X=X, x_mean=x_mean)
+        self._calc_errs(X=X, y=y, x_mean=x_mean, y_mean=y_mean)
 
         return self
 
@@ -222,12 +292,12 @@ def _test_univar_lin_reg_02() -> None:
 
     model = LinRegressor().fit(X=X_boston, y=y_boston)
 
-    print("RSS:", model.residual_sqr_sum)
+    print("RSS:", model.residual_sum_sqr)
     print("RSE:", model.std_err_residual)
     print("RSE^2:", model.sqr_err_residual)
     print("Intercept:", model.intercept)
-    print("ErrIntercept:", model.std_err_intercept)
     print("RegCoef:", model.reg_coeff)
+    print("ErrIntercept:", model.std_err_intercept)
     print("ErrCoef:", model.std_err_reg_coeff)
     print("95% intercept conf interval:", model.conf_int_intercept)
     print("95% regCoeff conf interval:", model.conf_int_reg_coeff)
@@ -235,6 +305,10 @@ def _test_univar_lin_reg_02() -> None:
     print("t-stat regCoeff", model.t_stat_reg_coeff)
     print("t-stat p-value intercept", model.t_test_pval_intercept)
     print("t-stat p-value regCoeff", model.t_test_pval_reg_coeff)
+    print("R^2", model.r_sqr_stat)
+
+    assert np.isclose(model.r_sqr_stat,
+                      np.corrcoef(X_boston, y_boston)[1, 0]**2)
 
 
 if __name__ == "__main__":
