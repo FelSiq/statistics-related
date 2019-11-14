@@ -5,19 +5,51 @@ import cross_validation
 
 
 class LinRegressor:
-    """Simple algorithm to fit a linear regression model."""
+    """Simple algorithm to fit a linear regression model.
+
+    The strategy adopted is the Least Squares criterion.
+    """
 
     def __init__(self):
         self.reg_coeff = None  # type: np.ndarray
         self.intercept = None  # type: np.ndarray
+        self.residuals = None  # type: np.ndarray
+
+        self.residual_sqr_sum = None  # type: float
+        self.std_err_residual = None  # type: float
+        self.sqr_err_residual = None  # type: float
+        self.std_err_intercept = None  # type: float
+        self.std_err_reg_coeff = None  # type: float
 
     @staticmethod
-    def rmse(y_true: np.ndarray, y_pred: np.ndarray):
+    def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
         return np.sqrt(np.sum(np.square(y_true - y_pred)) / y_true.size)
 
+    def _calc_errs(self, X: np.ndarray, x_mean: np.ndarray) -> None:
+        """Calculate errors related to the fitted data."""
+        self.residual_sqr_sum = np.sum(np.square(self.residuals))
+
+        self.sqr_err_residual = self.residual_sqr_sum / (
+            self.residuals.size - 2)
+        self.std_err_residual = np.sqrt(self.sqr_err_residual)
+
+        _aux = np.sum(np.square(X - x_mean))
+
+        self.std_err_intercept = np.sqrt(
+            self.sqr_err_residual *
+            (1.0 / self.residuals.size + np.square(x_mean) / _aux))
+
+        self.std_err_reg_coeff = np.sqrt(self.sqr_err_residual / _aux)
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
+        if not isinstance(X, np.ndarray):
+            X = np.asarray(X, dtype=float)
+
+        if not isinstance(y, np.ndarray):
+            y = np.asarray(y, dtype=float)
+
         _num_inst = X.size if X.ndim == 1 else X.shape[0]
 
         if _num_inst != y.size:
@@ -33,6 +65,11 @@ class LinRegressor:
         self.reg_coeff = np.dot(_aux, y - y_mean) / np.dot(_aux, _aux)
 
         self.intercept = y_mean - self.reg_coeff * x_mean
+
+        # Note: residuals are estimation of the true irredutible errors
+        self.residuals = y - self.predict(X)
+
+        self._calc_errs(X=X, x_mean=x_mean)
 
         return self
 
@@ -96,7 +133,7 @@ class MultivarLinRegressor:
         return np.matmul(MultivarLinRegressor._augment_x(X), self.coeffs)
 
 
-def _test_univar_lin_reg():
+def _test_univar_lin_reg_01() -> None:
     import matplotlib.pyplot as plt
     random_state = 16
 
@@ -139,5 +176,25 @@ def _test_univar_lin_reg():
     plt.show()
 
 
+def _test_univar_lin_reg_02() -> None:
+    import sklearn.datasets
+
+    boston = sklearn.datasets.load_boston()
+
+    X_boston = boston.data[:, boston.feature_names == "LSTAT"].ravel()
+    y_boston = boston.target
+
+    model = LinRegressor().fit(X=X_boston, y=y_boston)
+
+    print("RSS:", model.residual_sqr_sum)
+    print("RSE:", model.std_err_residual)
+    print("RSE^2:", model.sqr_err_residual)
+    print("Intercept:", model.intercept)
+    print("ErrIntercept:", model.std_err_intercept)
+    print("RegCoef:", model.reg_coeff)
+    print("ErrCoef:", model.std_err_reg_coeff)
+
+
 if __name__ == "__main__":
-    _test_univar_lin_reg()
+    _test_univar_lin_reg_01()
+    _test_univar_lin_reg_02()
