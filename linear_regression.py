@@ -30,6 +30,9 @@ class LinRegressor:
 
         self.r_sqr_stat = None  # type: float
 
+        self.f_stat = None  # type: float
+        self.f_stat_pval = None  # type: float
+
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
@@ -59,13 +62,39 @@ class LinRegressor:
 
         return self.std_err_residual
 
-    def _calc_f_stat(self) -> None:
-        """Calculate the F-statistic."""
+    def _calc_f_stat(self) -> float:
+        r"""Calculate the F-stat.
+
+        In a simple linear regression (only a single independent variable)
+        the F-stat is just the square of the t-stat of the
+        regression angular coefficient.
+        $$
+        \text{F-stat} = \text{t-stat}^{2}
+        $$
+        Therefore, the F-statistic is not useful (given the t-statistic
+        and the t-statistic test) in a simple linear regression model.
+
+        However, in a multiple linear regression model, the F-statistic
+        can be use to perform a hypothesis test of wether ANY of the
+        model coefficients are different from zero, and it is not
+        replaced by the individual p-values of each coefficient due to
+        false positives given a significance level $\alpha$ (i.e., it is
+        expected that $100 * \alpha$ zero coefficients are assumed
+        significant, or non-zero, due to random chance.)
+        """
+        self.f_stat = np.square(self.t_stat_reg_coeff)
+
+        # Note: this F-statistic p-value value will be *exactly* the same as
+        # the t-statistic test p-value
+        self.f_stat_pval = scipy.stats.f(
+            dfn=1, dfd=self.residuals.size - 1).sf(np.abs(self.f_stat))
+
+        return self.f_stat
 
     def _calc_r_sqr_stat(self) -> float:
-        r"""Calculate the $R^{2}$ statistic.
+        r"""Calculate the $R^{2}$ stat.
 
-        The $R^{2}$ statistic is calculated as
+        The $R^{2}$ stat is calculated as
         $$
         R^{2} = \frac{\text{TSS} - \text{RSS}}{\text{TSS}}
               = 1.0 - \frac{\text{RSS}}{\text{TSS}}
@@ -89,15 +118,15 @@ class LinRegressor:
         It calculates the proportion of variability in the dependent variable
         can be explained using the independent variable.
 
-        The range of this statistic is [0, 1], where 1.0 means that all
+        The range of this stat is [0, 1], where 1.0 means that all
         variance in the dependent variable $y$ was explained by the
         independent variable $x$, after regressing $y$ onto $x$. This
-        statistic is unit-less.
+        stat is unit-less.
 
         Notes
         -----
         Just like the RSE (Residual Standard Error), it is difficult to
-        select a ``good/high value for the $R^{2}$ statistic.``, as it varies
+        select a ``good/high value for the $R^{2}$ stat.``, as it varies
         among different applications and subjects.
 
         In the scenario where there is a single independent variable, then
@@ -147,6 +176,8 @@ class LinRegressor:
             t_stat_val=self.t_stat_intercept, df=self.residuals.size - 1)
         self.t_test_pval_reg_coeff = self._ttest(
             t_stat_val=self.t_stat_reg_coeff, df=self.residuals.size - 1)
+
+        self._calc_f_stat()
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
@@ -311,7 +342,8 @@ def _test_univar_lin_reg_02() -> None:
     print("t-stat regCoeff", model.t_stat_reg_coeff)
     print("t-stat p-value intercept", model.t_test_pval_intercept)
     print("t-stat p-value regCoeff", model.t_test_pval_reg_coeff)
-    print("R^2", model.r_sqr_stat)
+    print("F-stat", model.f_stat)
+    print("F-stat p-value", model.f_stat_pval)
 
     assert np.isclose(model.r_sqr_stat,
                       np.corrcoef(X_boston, y_boston)[1, 0]**2)
