@@ -113,10 +113,14 @@ class LinRegressor:
                    = \sum_{i=1}^{n}(y_{i} - (\beta_{0} + \beta_{1}x_{i}))^{2}
         $$
         where $y_{i}$ is the true value of the $i$th dependent variable, and
-        $x_{i}$ is the value of the $i$th independent variable.
+        $x_{i}$ is the value of the $i$th independent variable, and it express
+        the amount of variability captured by the residuals (i.e., not
+        explained by the model coefficients.)
 
-        It calculates the proportion of variability in the dependent variable
-        can be explained using the independent variable.
+        Therefore, $\text{TSS} - \text{RSS}$ is the amount of variability of
+        the dependent variable captured by the model, and dividing it by
+        $\text{TSS}$, we calculate the proportion of variability of the
+        dependent variable that can be explained using the independent variable.
 
         The range of this stat is [0, 1], where 1.0 means that all
         variance in the dependent variable $y$ was explained by the
