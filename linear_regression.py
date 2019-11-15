@@ -39,6 +39,8 @@ class LinRegressor:
         self.f_stat = None  # type: float
         self.f_stat_pval = None  # type: float
 
+        self.leverage = None  # type: np.ndarray
+
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Root mean squared error."""
@@ -164,13 +166,16 @@ class LinRegressor:
         self._calc_rse()
         self._calc_r_sqr_stat()
 
-        _aux = np.sum(np.square(X - x_mean))
+        _x_dist_sqr = np.square(X - x_mean)
+        _x_dist_total = np.sum(_x_dist_sqr)
+
+        self.leverage = 1 / self.residuals.size + _x_dist_sqr / _x_dist_total
 
         self.std_err_intercept = np.sqrt(
             self.sqr_err_residual *
-            (1.0 / self.residuals.size + np.square(x_mean) / _aux))
+            (1.0 / self.residuals.size + np.square(x_mean) / _x_dist_total))
 
-        self.std_err_reg_coeff = np.sqrt(self.sqr_err_residual / _aux)
+        self.std_err_reg_coeff = np.sqrt(self.sqr_err_residual / _x_dist_total)
 
         _t_dist_int = np.asarray(
             scipy.stats.t.interval(alpha=0.975, df=self.residuals.size - 2),
@@ -429,6 +434,7 @@ def _test_univar_lin_reg_01() -> None:
 
 
 def _test_univar_lin_reg_02() -> None:
+    import matplotlib.pyplot as plt
     import sklearn.datasets
 
     boston = sklearn.datasets.load_boston()
@@ -458,6 +464,35 @@ def _test_univar_lin_reg_02() -> None:
     assert np.isclose(model.r_sqr_stat,
                       np.corrcoef(X_boston, y_boston)[1, 0]**2)
 
+    studentized_res = model.residuals / model.std_err_residual
+    plt.hlines(
+        y=0,
+        xmin=1 / y_boston.size,
+        xmax=np.max(model.leverage),
+        linestyle="--")
+    lev_threshold = 2 / y_boston.size
+    inds = model.leverage <= lev_threshold
+    plt.scatter(
+        model.leverage[inds],
+        studentized_res[inds],
+        marker="o",
+        color="green",
+        label="Leverage <=t")
+    plt.scatter(
+        model.leverage[~inds],
+        studentized_res[~inds],
+        marker="x",
+        color="red",
+        label="Leverage > t")
+    plt.title(
+        "Leverage x Studentized residuals (t = {:.8f})".format(lev_threshold))
+    plt.xlabel("Leverage")
+    plt.ylabel("Studentized residuals")
+    plt.legend()
+    plt.show()
+
+    assert np.isclose(np.mean(model.leverage), 2 / y_boston.size)
+
 
 def _test_multi_lin_reg_01():
     import sklearn.datasets
@@ -485,5 +520,5 @@ def _test_multi_lin_reg_01():
 
 if __name__ == "__main__":
     # _test_univar_lin_reg_01()
-    # _test_univar_lin_reg_02()
-    _test_multi_lin_reg_01()
+    _test_univar_lin_reg_02()
+    # _test_multi_lin_reg_01()
