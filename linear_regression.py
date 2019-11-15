@@ -16,6 +16,8 @@ class LinRegressor:
         self.intercept = None  # type: np.ndarray
         self.residuals = None  # type: np.ndarray
 
+        self.total_sum_sqr = None  # type: float
+
         self.residual_sum_sqr = None  # type: float
         self.std_err_residual = None  # type: float
         self.sqr_err_residual = None  # type: float
@@ -24,6 +26,9 @@ class LinRegressor:
 
         self.conf_int_intercept = None  # type: np.ndarray
         self.conf_int_reg_coeff = None  # type: np.ndarray
+
+        self.t_stat_intercept = None  # type: float
+        self.t_stat_reg_coeff = None  # type: float
 
         self.t_test_pval_intercept = None  # type: float
         self.t_test_pval_reg_coeff = None  # type: float
@@ -244,6 +249,23 @@ class MultipleLinRegressor:
         self.residuals = None  # type: np.ndarray
         self.calc_stats = calc_stats
 
+        self.residual_sum_sqr = None  # type: float
+
+        self.total_sum_sqr = None  # type: float
+
+        self.std_err_residual = None  # type: float
+        self.sqr_err_residual = None  # type: float
+        self.std_err_coeffs = None  # type: float
+
+        self.r_sqr_stat = None  # type: float
+
+        self.t_stat = None  # type: np.ndarray
+        self.t_test_pval = None  # type: np.ndarray
+        self.t_stat_pval_coeffs = None  # type: np.ndarray
+
+        self.f_stat = None  # type: float
+        self.f_stat_pval = None  # type: float
+
     @staticmethod
     def _augment_x(X: np.ndarray) -> np.ndarray:
         """Append a column of 1's in ``X``.
@@ -258,10 +280,14 @@ class MultipleLinRegressor:
 
         return np.hstack((np.ones((_num_inst, 1)), X))
 
-    def _calc_std_errs(self) -> np.ndarray:
+    def _calc_std_errs(self, X_aug: np.ndarray) -> np.ndarray:
         """Calculate the standard errors for every model coefficient."""
-        self.std_err_residual = np.sqrt(
+        self.sqr_err_residual = (
             self.residual_sum_sqr / (self.residuals.size - self.coeffs.size))
+
+        self.std_err_residual = np.sqrt(self.sqr_err_residual)
+
+        self.std_err_coeffs = self.coeffs.ravel() / self.t_stat
 
     def _calc_t_stat(self, X_aug: np.ndarray, y: np.ndarray) -> np.ndarray:
         """Calculate the t-statistics related to every coefficient."""
@@ -274,7 +300,7 @@ class MultipleLinRegressor:
         _t_stat_model = scipy.stats.t(df=inst_num - ang_coeffs_num - 1)
 
         col_ind = np.arange(self.coeffs.size)
-        for i in np.arange(1, self.coeffs.size):
+        for i in np.arange(self.coeffs.size):
             X_aug_mod = X_aug[:, np.delete(col_ind, i)]
             rss_model = MultipleLinRegressor(calc_stats=False).fit(
                 X=X_aug_mod, y=y, add_intercept=False).residual_sum_sqr
@@ -317,9 +343,9 @@ class MultipleLinRegressor:
         self._calc_r_sqr_stat()
 
         if self.calc_stats:
-            self._calc_std_errs()
             self._calc_f_stat()
             self._calc_t_stat(X_aug=X_aug, y=y)
+            self._calc_std_errs(X_aug=X_aug)
 
     def fit(self, X: np.ndarray, y: np.ndarray,
             add_intercept: bool = True) -> "MultipleLinRegressor":
@@ -447,6 +473,7 @@ def _test_multi_lin_reg_01():
     print("RSS:", model.residual_sum_sqr)
     print("RSE:", model.std_err_residual)
     print("R^2:", model.r_sqr_stat)
+    print("Coeff SE:", model.std_err_coeffs)
     print("coeffs:", model.coeffs)
     print("t-stat", model.t_stat)
     print("t-stat p-value", model.t_test_pval)
