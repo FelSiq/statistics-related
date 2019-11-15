@@ -87,7 +87,7 @@ class LinRegressor:
         # Note: this F-statistic p-value value will be *exactly* the same as
         # the t-statistic test p-value
         self.f_stat_pval = scipy.stats.f(
-            dfn=1, dfd=self.residuals.size - 1).sf(np.abs(self.f_stat))
+            dfn=1, dfd=self.residuals.size - 2).sf(np.abs(self.f_stat))
 
         return self.f_stat
 
@@ -177,9 +177,9 @@ class LinRegressor:
         self.t_stat_reg_coeff = self.reg_coeff / self.std_err_reg_coeff
 
         self.t_test_pval_intercept = self._ttest(
-            t_stat_val=self.t_stat_intercept, df=self.residuals.size - 1)
+            t_stat_val=self.t_stat_intercept, df=self.residuals.size - 2)
         self.t_test_pval_reg_coeff = self._ttest(
-            t_stat_val=self.t_stat_reg_coeff, df=self.residuals.size - 1)
+            t_stat_val=self.t_stat_reg_coeff, df=self.residuals.size - 2)
 
         self._calc_f_stat()
 
@@ -238,9 +238,11 @@ class LinRegressor:
 class MultipleLinRegressor:
     """Simple algorithm to fit Multiple Linear Regression model."""
 
-    def __init__(self):
+    def __init__(self, calc_stats: bool = True):
         """Fit multivariate linear regression models."""
         self.coeffs = None  # type: np.ndarray
+        self.residuals = None  # type: np.ndarray
+        self.calc_stats = calc_stats
 
     @staticmethod
     def _augment_x(X: np.ndarray) -> np.ndarray:
@@ -254,14 +256,82 @@ class MultipleLinRegressor:
 
         _num_inst, _ = X.shape
 
-        return np.hstack((X, np.ones((_num_inst, 1))))
+        return np.hstack((np.ones((_num_inst, 1)), X))
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> "MultipleLinRegressor":
+    def _calc_std_errs(self) -> np.ndarray:
+        """Calculate the standard errors for every model coefficient."""
+        self.std_err_residual = np.sqrt(
+            self.residual_sum_sqr / (self.residuals.size - self.coeffs.size))
+
+    def _calc_t_stat(self, X_aug: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """Calculate the t-statistics related to every coefficient."""
+        inst_num = self.residuals.size
+        ang_coeffs_num = self.coeffs.size - 1
+
+        self.t_stat = np.zeros(self.coeffs.size, dtype=float)
+        self.t_test_pval = np.zeros(self.coeffs.size, dtype=float)
+
+        _t_stat_model = scipy.stats.t(df=inst_num - ang_coeffs_num - 1)
+
+        col_ind = np.arange(self.coeffs.size)
+        for i in np.arange(1, self.coeffs.size):
+            X_aug_mod = X_aug[:, np.delete(col_ind, i)]
+            rss_model = MultipleLinRegressor(calc_stats=False).fit(
+                X=X_aug_mod, y=y, add_intercept=False).residual_sum_sqr
+            f_stat = (
+                (inst_num - ang_coeffs_num - 1) *
+                (rss_model - self.residual_sum_sqr)) / self.residual_sum_sqr
+
+            self.t_stat[i] = np.sign(self.coeffs[i]) * np.sqrt(np.abs(f_stat))
+            self.t_test_pval[i] = _t_stat_model.sf(np.abs(self.t_stat[i]))
+
+        return self.t_stat
+
+    def _calc_f_stat(self) -> float:
+        """Calculate the F-statistic related to the model."""
+        inst_num = self.residuals.size
+        ang_coeffs_num = self.coeffs.size - 1
+
+        self.f_stat = (((inst_num - ang_coeffs_num - 1) *
+                        (self.total_sum_sqr - self.residual_sum_sqr)) /
+                       (ang_coeffs_num * self.residual_sum_sqr))
+
+        self.f_stat_pval = scipy.stats.f(
+            dfn=ang_coeffs_num, dfd=inst_num - ang_coeffs_num + 1).sf(
+                np.abs(self.f_stat))
+
+        return self.f_stat
+
+    def _calc_r_sqr_stat(self) -> float:
+        """Calculate the $R^{2}$ statistic."""
+        self.r_sqr_stat = 1.0 - self.residual_sum_sqr / self.total_sum_sqr
+
+        return self.r_sqr_stat
+
+    def _calc_errs(self, X_aug: np.ndarray, y: np.ndarray) -> None:
+        """Calculate errors associated with the model and the fitted data."""
+        y_mean = np.mean(y)
+        self.total_sum_sqr = np.sum(np.square(y - y_mean))
+        self.residual_sum_sqr = np.sum(np.square(self.residuals))
+
+        self._calc_r_sqr_stat()
+
+        if self.calc_stats:
+            self._calc_std_errs()
+            self._calc_f_stat()
+            self._calc_t_stat(X_aug=X_aug, y=y)
+
+    def fit(self, X: np.ndarray, y: np.ndarray,
+            add_intercept: bool = True) -> "MultipleLinRegressor":
         """Fit data into model, calculating the corresponding coefficients."""
         if y.ndim == 1:
             y = y.reshape(-1, 1)
 
-        X_aug = MultipleLinRegressor._augment_x(X)
+        if add_intercept:
+            X_aug = MultipleLinRegressor._augment_x(X)
+
+        else:
+            X_aug = X
 
         _M = np.matmul(X_aug.T, X_aug)
         _Y = np.matmul(X_aug.T, y)
@@ -273,11 +343,18 @@ class MultipleLinRegressor:
         # fixed.'
         self.coeffs = np.linalg.solve(_M, _Y)
 
+        self.residuals = y - self.predict(X, add_intercept=add_intercept)
+
+        self._calc_errs(X_aug=X_aug, y=y)
+
         return self
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict(self, X: np.ndarray, add_intercept: bool = True) -> np.ndarray:
         """Use the fitted model to predict unknown values."""
-        return np.matmul(MultipleLinRegressor._augment_x(X), self.coeffs)
+        if add_intercept:
+            X = MultipleLinRegressor._augment_x(X)
+
+        return np.matmul(X, self.coeffs)
 
 
 def _test_univar_lin_reg_01() -> None:
@@ -336,6 +413,7 @@ def _test_univar_lin_reg_02() -> None:
     print("RSS:", model.residual_sum_sqr)
     print("RSE:", model.std_err_residual)
     print("RSE^2:", model.sqr_err_residual)
+    print("R^2:", model.r_sqr_stat)
     print("Intercept:", model.intercept)
     print("RegCoef:", model.reg_coeff)
     print("ErrIntercept:", model.std_err_intercept)
@@ -353,6 +431,30 @@ def _test_univar_lin_reg_02() -> None:
                       np.corrcoef(X_boston, y_boston)[1, 0]**2)
 
 
+def _test_multi_lin_reg_01():
+    import sklearn.datasets
+
+    boston = sklearn.datasets.load_boston()
+
+    X_boston = boston.data[:,
+                           np.isin(
+                               boston.feature_names, ["LSTAT", "TAX", "AGE"],
+                               assume_unique=True)]
+    y_boston = boston.target
+
+    model = MultipleLinRegressor().fit(X=X_boston, y=y_boston)
+
+    print("RSS:", model.residual_sum_sqr)
+    print("RSE:", model.std_err_residual)
+    print("R^2:", model.r_sqr_stat)
+    print("coeffs:", model.coeffs)
+    print("t-stat", model.t_stat)
+    print("t-stat p-value", model.t_test_pval)
+    print("F-stat", model.f_stat)
+    print("F-stat p-value", model.f_stat_pval)
+
+
 if __name__ == "__main__":
     # _test_univar_lin_reg_01()
-    _test_univar_lin_reg_02()
+    # _test_univar_lin_reg_02()
+    _test_multi_lin_reg_01()
