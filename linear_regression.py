@@ -1,4 +1,5 @@
 """Simple implementation of Linear Regression."""
+# pylint: disable=C0103, E1101, R0902
 import numpy as np
 import scipy.stats
 
@@ -280,7 +281,7 @@ class MultipleLinRegressor:
 
         return np.hstack((np.ones((_num_inst, 1)), X))
 
-    def _calc_std_errs(self, X_aug: np.ndarray) -> np.ndarray:
+    def _calc_std_errs(self) -> np.ndarray:
         """Calculate the standard errors for every model coefficient."""
         self.sqr_err_residual = (
             self.residual_sum_sqr / (self.residuals.size - self.coeffs.size))
@@ -345,7 +346,7 @@ class MultipleLinRegressor:
         if self.calc_stats:
             self._calc_f_stat()
             self._calc_t_stat(X_aug=X_aug, y=y)
-            self._calc_std_errs(X_aug=X_aug)
+            self._calc_std_errs()
 
     def fit(self, X: np.ndarray, y: np.ndarray,
             add_intercept: bool = True) -> "MultipleLinRegressor":
@@ -384,6 +385,7 @@ class MultipleLinRegressor:
 
 
 def _test_univar_lin_reg_01() -> None:
+    # pylint: disable=R0914
     import matplotlib.pyplot as plt
     random_state = 16
 
