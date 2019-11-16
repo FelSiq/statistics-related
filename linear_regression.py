@@ -272,6 +272,8 @@ class MultipleLinRegressor:
         self.f_stat = None  # type: float
         self.f_stat_pval = None  # type: float
 
+        self.var_inflation_factor = None  # type: np.ndarray
+
     @staticmethod
     def _augment_x(X: np.ndarray) -> np.ndarray:
         """Append a column of 1's in ``X``.
@@ -306,10 +308,16 @@ class MultipleLinRegressor:
         _t_stat_model = scipy.stats.t(df=inst_num - ang_coeffs_num - 1)
 
         col_ind = np.arange(self.coeffs.size)
+
+        model = MultipleLinRegressor(calc_stats=False)
+
         for i in np.arange(self.coeffs.size):
             X_aug_mod = X_aug[:, np.delete(col_ind, i)]
-            rss_model = MultipleLinRegressor(calc_stats=False).fit(
-                X=X_aug_mod, y=y, add_intercept=False).residual_sum_sqr
+
+            model.fit(X=X_aug_mod, y=y, add_intercept=False)
+
+            rss_model = model.residual_sum_sqr
+
             f_stat = (
                 (inst_num - ang_coeffs_num - 1) *
                 (rss_model - self.residual_sum_sqr)) / self.residual_sum_sqr
@@ -340,18 +348,57 @@ class MultipleLinRegressor:
 
         return self.r_sqr_stat
 
+    def _calc_vif(self, X_aug: np.ndarray) -> np.ndarray:
+        """Calculate the Variance Inflation Factor (VIF).
+
+        The VIF of each parameter $b_{j}$ is the ratio of the variance of
+        $b_{j}$ when fitting the full model divided by the variance of
+        $b_{j}$ if fit on its own.
+
+        It is used to detect multicolinearity (i.e., collinearity among
+        a indefinite amount of variables). The correlation matrix can be
+        used to detect collinearity between two variables, but can not
+        detect multicolinearity of three or more variables. For that
+        matter, the VIF can be used.
+
+        The smallest value for the VIF is 1, and ``high`` (typically more
+        than 5 or 10 - although it may be problem dependent) values may
+        represents high multicolinearity between that independent variable
+        and a subset of other independent variables.
+
+        The collinearity of independent variable is a problem in a linear
+        model because it makes the values of parameters difficult to
+        estimate, thus giving weak confidence intervals and statistical
+        guarantees about the model. In other words, collinearity between
+        independent variables may masks the importance of each variable.
+        """
+        self.var_inflation_factor = np.zeros(self.coeffs.size)
+
+        var_inds = np.arange(self.coeffs.size)
+        model = MultipleLinRegressor(calc_stats=False)
+
+        for i in var_inds:
+            model.fit(
+                X=X_aug[:, np.delete(var_inds, i)],
+                y=X_aug[:, i],
+                add_intercept=False)
+
+            self.var_inflation_factor[i] = 1.0 / (1.0 - model.r_sqr_stat)
+
+        return self.var_inflation_factor
+
     def _calc_errs(self, X_aug: np.ndarray, y: np.ndarray) -> None:
         """Calculate errors associated with the model and the fitted data."""
         y_mean = np.mean(y)
         self.total_sum_sqr = np.sum(np.square(y - y_mean))
         self.residual_sum_sqr = np.sum(np.square(self.residuals))
-
         self._calc_r_sqr_stat()
 
         if self.calc_stats:
             self._calc_f_stat()
             self._calc_t_stat(X_aug=X_aug, y=y)
             self._calc_std_errs()
+            self._calc_vif(X_aug=X_aug)
 
     def fit(self, X: np.ndarray, y: np.ndarray,
             add_intercept: bool = True) -> "MultipleLinRegressor":
@@ -423,7 +470,7 @@ def _test_univar_lin_reg_01() -> None:
         plt.subplot(3, 3, 1 + fold_id)
         plt.plot(X, y, label="True data")
         plt.plot(
-            X_test, y_pred, 'o', label="RMSE: {:.2f}".format(errors[fold_id]))
+            X_test, y_pred, "o", label="RMSE: {:.2f}".format(errors[fold_id]))
         plt.legend()
         plt.title(str(fold_id))
 
@@ -516,9 +563,10 @@ def _test_multi_lin_reg_01():
     print("t-stat p-value", model.t_test_pval)
     print("F-stat", model.f_stat)
     print("F-stat p-value", model.f_stat_pval)
+    print("VIF", model.var_inflation_factor)
 
 
 if __name__ == "__main__":
     # _test_univar_lin_reg_01()
-    _test_univar_lin_reg_02()
-    # _test_multi_lin_reg_01()
+    # _test_univar_lin_reg_02()
+    _test_multi_lin_reg_01()
