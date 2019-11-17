@@ -4,6 +4,7 @@ import typing as t
 
 import numpy as np
 import scipy.stats
+import scipy.linalg
 
 import cross_validation
 
@@ -42,6 +43,8 @@ class LinRegressor:
         self.f_stat_pval = None  # type: float
 
         self.leverage = None  # type: np.ndarray
+
+        self.loocv_err = None  # type: float
 
     @staticmethod
     def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -200,6 +203,11 @@ class LinRegressor:
 
         self._calc_f_stat()
 
+        # Leave-One-Out Cross Validation (LOOCV)
+        self.loocv_err = np.sum(
+            np.square(self.residuals /
+                      (1.0 - self.leverage))) / self.residuals.size
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
         if not isinstance(X, np.ndarray):
@@ -262,6 +270,8 @@ class MultipleLinRegressor:
         self.calc_stats = calc_stats
 
         self.add_intercept = False
+
+        self.leverage = None  # type: np.ndarray
 
         self.residual_sum_sqr = None  # type: float
 
@@ -408,6 +418,13 @@ class MultipleLinRegressor:
 
         return self.var_inflation_factor
 
+    def _calc_leverage(self, X: np.ndarray) -> np.ndarray:
+        """Calculates leverage for all observations."""
+        cho_factor = scipy.linalg.cholesky(np.matmul(X.T, X), lower=False)
+        z_vector = scipy.linalg.solve(cho_factor.T, X.T)
+        self.leverage = np.sum(np.square(z_vector), axis=0)
+        return self.leverage
+
     def _calc_errs(self, X_aug: np.ndarray, y: np.ndarray) -> None:
         """Calculate errors associated with the model and the fitted data."""
         y_mean = np.mean(y)
@@ -420,6 +437,7 @@ class MultipleLinRegressor:
             self._calc_t_stat(X_aug=X_aug, y=y)
             self._calc_std_errs()
             self._calc_vif(X_aug=X_aug)
+            self._calc_leverage(X=X_aug[:, 1:])
 
     def fit(self,
             X: t.Optional[np.ndarray],
@@ -657,7 +675,15 @@ class ModelSelection:
 
     def backward_selection(self, k_fold_num: int = 10,
                            verbose: bool = False) -> MultipleLinRegressor:
-        """."""
+        """Feature selection using the stepwise backward selection.
+
+        In the stepwise backward feature selection strategy, a linear
+        model is fitted using all independent variables. For each iteration,
+        the least significant variable (based on the $R^{2}$ value) is
+        removed from the model. The best model of each iteration is kept,
+        and the final model is chosen based on the test error using k-fold
+        cross validations.
+        """
         if self.X is None or self.y is None:
             raise TypeError(
                 "Please 'fit' data into ModelSelection before model selection."
@@ -715,8 +741,36 @@ def _test_univar_lin_reg_01() -> None:
     plt.show()
 
 
-def _test_univar_lin_reg_02() -> None:
+def _leverage_plot(model: t.Union[LinRegressor, MultipleLinRegressor],
+                   y: np.ndarray) -> None:
     import matplotlib.pyplot as plt
+
+    studentized_res = model.residuals / model.std_err_residual
+    plt.hlines(
+        y=0, xmin=1 / y.size, xmax=np.max(model.leverage), linestyle="--")
+    lev_threshold = 2 / y.size
+    inds = model.leverage <= lev_threshold
+    plt.scatter(
+        model.leverage[inds],
+        studentized_res[inds],
+        marker="o",
+        color="green",
+        label="Leverage <=t")
+    plt.scatter(
+        model.leverage[~inds],
+        studentized_res[~inds],
+        marker="x",
+        color="red",
+        label="Leverage > t")
+    plt.title(
+        "Leverage x Studentized residuals (t = {:.8f})".format(lev_threshold))
+    plt.xlabel("Leverage")
+    plt.ylabel("Studentized residuals")
+    plt.legend()
+    plt.show()
+
+
+def _test_univar_lin_reg_02() -> None:
     import sklearn.datasets
 
     boston = sklearn.datasets.load_boston()
@@ -746,34 +800,21 @@ def _test_univar_lin_reg_02() -> None:
     assert np.isclose(model.r_sqr_stat,
                       np.corrcoef(X_boston, y_boston)[1, 0]**2)
 
-    studentized_res = model.residuals / model.std_err_residual
-    plt.hlines(
-        y=0,
-        xmin=1 / y_boston.size,
-        xmax=np.max(model.leverage),
-        linestyle="--")
-    lev_threshold = 2 / y_boston.size
-    inds = model.leverage <= lev_threshold
-    plt.scatter(
-        model.leverage[inds],
-        studentized_res[inds],
-        marker="o",
-        color="green",
-        label="Leverage <=t")
-    plt.scatter(
-        model.leverage[~inds],
-        studentized_res[~inds],
-        marker="x",
-        color="red",
-        label="Leverage > t")
-    plt.title(
-        "Leverage x Studentized residuals (t = {:.8f})".format(lev_threshold))
-    plt.xlabel("Leverage")
-    plt.ylabel("Studentized residuals")
-    plt.legend()
-    plt.show()
+    _leverage_plot(model=model, y=y_boston)
 
     assert np.isclose(np.mean(model.leverage), 2 / y_boston.size)
+
+    loocv_err = 0
+    for ind_test, ind_train in cross_validation.loo_cv(
+            X=X_boston, return_inds=True):
+        cur_model = MultipleLinRegressor().fit(
+            X=X_boston[ind_train], y=y_boston[ind_train])
+        loocv_err += np.square(
+            cur_model.predict(X_boston[ind_test]) - y_boston[ind_test])
+
+    loocv_err /= y_boston.size
+
+    assert np.isclose(model.loocv_err, loocv_err)
 
 
 def _test_multi_lin_reg_01() -> None:
@@ -800,6 +841,8 @@ def _test_multi_lin_reg_01() -> None:
     print("F-stat p-value", model.f_stat_pval)
     print("VIF", model.var_inflation_factor)
 
+    _leverage_plot(model=model, y=y_boston)
+
 
 def _test_model_selection() -> None:
     import sklearn.datasets
@@ -813,7 +856,7 @@ def _test_model_selection() -> None:
 
 
 if __name__ == "__main__":
-    # _test_univar_lin_reg_01()
-    # _test_univar_lin_reg_02()
-    # _test_multi_lin_reg_01()
+    _test_univar_lin_reg_01()
+    _test_univar_lin_reg_02()
+    _test_multi_lin_reg_01()
     _test_model_selection()
