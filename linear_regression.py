@@ -542,9 +542,10 @@ class ModelSelection:
         for pred_num in np.arange(predictors_num):
             best_cur_model = None
             best_cur_model_pred_ind = -1
+            best_cur_del_ind = -1
 
-            for cur_pred_ind in np.arange(active_preds.size):
-                cur_preds = np.delete(active_preds, cur_pred_ind)
+            for cur_del_ind, cur_pred_ind in enumerate(active_preds):
+                cur_preds = np.delete(active_preds, cur_del_ind)
                 X_cur = self.X[:, cur_preds]
                 cur_model = MultipleLinRegressor(calc_stats=False).fit(
                     X=X_cur, y=self.y)
@@ -552,10 +553,11 @@ class ModelSelection:
                 if best_cur_model is None or cur_model.r_sqr_stat >= best_cur_model.r_sqr_stat:
                     best_cur_model = cur_model
                     best_cur_model_pred_ind = cur_pred_ind
+                    best_cur_del_ind = cur_del_ind
 
             models[pred_num + 1] = best_cur_model
             deleted_preds[pred_num] = best_cur_model_pred_ind
-            active_preds = np.delete(active_preds, best_cur_model_pred_ind)
+            active_preds = np.delete(active_preds, best_cur_del_ind)
 
             if verbose:
                 r_sqr_cur = models[pred_num + 1].r_sqr_stat
@@ -574,19 +576,18 @@ class ModelSelection:
                          verbose: bool = False) -> np.ndarray:
         predictors_num = self.X.shape[1]
         model_test_errs = np.zeros(1 + predictors_num, dtype=float)
-        model_test = MultipleLinRegressor()
+        model_test = MultipleLinRegressor(calc_stats=False)
 
         X_aug = model_test._augment_x(self.X)
         for model_ind in np.arange(1 + predictors_num):
             if chosen_preds is not None:
-                X_cur = X_aug[:, chosen_preds[:model_ind]]
+                cur_preds = chosen_preds[:model_ind]
 
             else:
-                X_cur = X_aug[:,
-                              np.delete(
-                                  np.arange(predictors_num), deleted_preds[:(
-                                      model_ind - 1)])]
+                cur_preds = np.delete(
+                    np.arange(predictors_num), deleted_preds[:model_ind])
 
+            X_cur = X_aug[:, cur_preds]
             for inds_test, inds_train in cross_validation.kfold_cv(
                     X=X_cur, k=k_fold_num, return_inds=True):
                 X_train, X_test = X_cur[inds_train, :], X_cur[inds_test, :]
@@ -599,15 +600,8 @@ class ModelSelection:
 
         if verbose:
             print(
-                "{}-fold Cross validation mean test RMSE:".format(k_fold_num))
-            _aux = np.hstack((
-                np.arange(1 + predictors_num).reshape(-1, 1),
-                np.round(model_test_errs / k_fold_num, 4).reshape(-1, 1),
-            ))
-            all_rmse = np.asarray(sorted(_aux, key=lambda item: item[1]))
-            print("Predictors by RMSE:")
-            for ind, rmse in all_rmse:
-                print(chosen_preds[:(1 + int(ind))], rmse)
+                "{}-fold Cross validation mean test RMSE:".format(k_fold_num),
+                model_test_errs / k_fold_num)
 
         return model_test_errs
 
@@ -634,7 +628,7 @@ class ModelSelection:
         else:
             best_model_preds = np.delete(
                 np.arange(self.X.shape[1]),
-                deleted_preds[:(1 + best_model_ind)])
+                deleted_preds[:(best_model_ind - 1)])
 
         if verbose:
             print(
@@ -813,10 +807,9 @@ def _test_model_selection() -> None:
     boston = sklearn.datasets.load_boston()
     chosen_model = ModelSelection().fit(
         X=boston.data, y=boston.target).forward_selection(verbose=True)
-    """
+
     chosen_model = ModelSelection().fit(
         X=boston.data, y=boston.target).backward_selection(verbose=True)
-    """
 
 
 if __name__ == "__main__":
