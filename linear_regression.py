@@ -431,7 +431,7 @@ class MultipleLinRegressor:
 
         self.add_intercept = add_intercept
 
-        if X is None:
+        if X is None or X.size == 0:
             X_aug = X = np.ones(shape=(y.size, 1))
             self.add_intercept = False
 
@@ -461,6 +461,9 @@ class MultipleLinRegressor:
         """Use the fitted model to predict unknown values."""
         if self.add_intercept:
             X = MultipleLinRegressor._augment_x(X)
+
+        if X is None or X.size == 0:
+            X = np.ones((self.coeffs.size, 1))
 
         if X.ndim == 1:
             X = X.reshape(-1, 1)
@@ -498,22 +501,20 @@ class ModelSelection:
         models = np.zeros(1 + predictors_num, dtype=object)
         models[0] = MultipleLinRegressor(calc_stats=False).fit(
             X=None, y=self.y)
-        chosen_preds = []
+        chosen_preds = []  # type: t.List[int]
 
         for pred_num in np.arange(predictors_num):
-            best_cur_model = models[pred_num]
+            best_cur_model = None
             best_cur_model_pred_ind = -1
-
-            models[pred_num + 1] = MultipleLinRegressor(calc_stats=False)
 
             for cur_pred_ind in np.delete(
                     np.arange(predictors_num), chosen_preds):
-                X_cur = self.X[:,
-                               np.hstack((chosen_preds,
-                                          cur_pred_ind)).astype(int)]
-                cur_model = models[pred_num + 1].fit(X=X_cur, y=self.y)
+                cur_preds = np.hstack((chosen_preds, cur_pred_ind)).astype(int)
+                X_cur = self.X[:, cur_preds]
+                cur_model = MultipleLinRegressor(calc_stats=False).fit(
+                    X=X_cur, y=self.y)
 
-                if cur_model.r_sqr_stat > best_cur_model.r_sqr_stat:
+                if best_cur_model is None or cur_model.r_sqr_stat >= best_cur_model.r_sqr_stat:
                     best_cur_model = cur_model
                     best_cur_model_pred_ind = cur_pred_ind
 
@@ -525,23 +526,66 @@ class ModelSelection:
                 r_sqr_prev = models[pred_num].r_sqr_stat
                 print(
                     "Predictors: {} - Current R^2: {:.4f} (relative increase of {:.2f}%)"
-                    .format(
-                        len(chosen_preds), r_sqr_cur,
-                        100 * (1.0 - r_sqr_prev / r_sqr_cur)))
+                    .format(pred_num + 1, r_sqr_cur,
+                            100 * (1.0 - r_sqr_prev / r_sqr_cur)))
 
         return chosen_preds
 
-    def _forward_cv(self,
-                    chosen_preds: np.ndarray,
-                    k_fold_num: int = 10,
-                    verbose: bool = False) -> np.ndarray:
+    def _backward_get_all_models(self, verbose: bool = False) -> np.ndarray:
+        predictors_num = self.X.shape[1]
+        models = np.zeros(1 + predictors_num, dtype=object)
+        models[0] = MultipleLinRegressor(calc_stats=False).fit(
+            X=self.X, y=self.y)
+        deleted_preds = np.zeros(predictors_num, dtype=int)
+        active_preds = np.arange(predictors_num)
+
+        for pred_num in np.arange(predictors_num):
+            best_cur_model = None
+            best_cur_model_pred_ind = -1
+
+            for cur_pred_ind in np.arange(active_preds.size):
+                cur_preds = np.delete(active_preds, cur_pred_ind)
+                X_cur = self.X[:, cur_preds]
+                cur_model = MultipleLinRegressor(calc_stats=False).fit(
+                    X=X_cur, y=self.y)
+
+                if best_cur_model is None or cur_model.r_sqr_stat >= best_cur_model.r_sqr_stat:
+                    best_cur_model = cur_model
+                    best_cur_model_pred_ind = cur_pred_ind
+
+            models[pred_num + 1] = best_cur_model
+            deleted_preds[pred_num] = best_cur_model_pred_ind
+            active_preds = np.delete(active_preds, best_cur_model_pred_ind)
+
+            if verbose:
+                r_sqr_cur = models[pred_num + 1].r_sqr_stat
+                r_sqr_prev = models[pred_num].r_sqr_stat
+                print(
+                    "Predictors: {} - Current R^2: {:.4f} (relative decrease of {:.2f}%)"
+                    .format(predictors_num - pred_num - 1, r_sqr_cur,
+                            100 * (1.0 - r_sqr_prev / r_sqr_cur)))
+
+        return deleted_preds
+
+    def _calc_model_errs(self,
+                         chosen_preds: t.Optional[np.ndarray] = None,
+                         deleted_preds: t.Optional[np.ndarray] = None,
+                         k_fold_num: int = 10,
+                         verbose: bool = False) -> np.ndarray:
         predictors_num = self.X.shape[1]
         model_test_errs = np.zeros(1 + predictors_num, dtype=float)
         model_test = MultipleLinRegressor()
 
         X_aug = model_test._augment_x(self.X)
         for model_ind in np.arange(1 + predictors_num):
-            X_cur = X_aug[:, chosen_preds[:model_ind]]
+            if chosen_preds is not None:
+                X_cur = X_aug[:, chosen_preds[:model_ind]]
+
+            else:
+                X_cur = X_aug[:,
+                              np.delete(
+                                  np.arange(predictors_num), deleted_preds[:(
+                                      model_ind - 1)])]
 
             for inds_test, inds_train in cross_validation.kfold_cv(
                     X=X_cur, k=k_fold_num, return_inds=True):
@@ -550,8 +594,8 @@ class ModelSelection:
 
                 model_test.fit(X=X_train, y=y_train, add_intercept=False)
 
-                model_test_errs[model_ind] += model_test.rmse(
-                    y_test, model_test.predict(X_test))
+                preds = model_test.predict(X_test)
+                model_test_errs[model_ind] += model_test.rmse(y_test, preds)
 
         if verbose:
             print(
@@ -561,10 +605,48 @@ class ModelSelection:
                 np.round(model_test_errs / k_fold_num, 4).reshape(-1, 1),
             ))
             all_rmse = np.asarray(sorted(_aux, key=lambda item: item[1]))
-            print("Number of predictors by RMSE:")
-            print(all_rmse)
+            print("Predictors by RMSE:")
+            for ind, rmse in all_rmse:
+                print(chosen_preds[:(1 + int(ind))], rmse)
 
         return model_test_errs
+
+    def _choose_best_model(self,
+                           chosen_preds: t.Optional[np.ndarray] = None,
+                           deleted_preds: t.Optional[np.ndarray] = None,
+                           k_fold_num: int = 10,
+                           verbose: bool = False) -> MultipleLinRegressor:
+        if chosen_preds is None and deleted_preds is None:
+            raise RuntimeError(
+                "Both 'chosen_preds' and 'deleted_preds' are None.")
+
+        model_test_errs = self._calc_model_errs(
+            chosen_preds=chosen_preds,
+            deleted_preds=deleted_preds,
+            k_fold_num=k_fold_num,
+            verbose=verbose)
+
+        best_model_ind = np.argmin(model_test_errs)
+
+        if chosen_preds is not None:
+            best_model_preds = chosen_preds[:(1 + best_model_ind)]
+
+        else:
+            best_model_preds = np.delete(
+                np.arange(self.X.shape[1]),
+                deleted_preds[:(1 + best_model_ind)])
+
+        if verbose:
+            print(
+                "Optimal (with {} selection strategy) number of predictors:".
+                format("backward" if chosen_preds is None else "forward"),
+                len(best_model_preds))
+            print("Predictor indices:", best_model_preds)
+
+        self.best_model = MultipleLinRegressor(calc_stats=True).fit(
+            X=self.X[:, best_model_preds], y=self.y)
+
+        return self.best_model
 
     def forward_selection(self, k_fold_num: int = 10,
                           verbose: bool = False) -> MultipleLinRegressor:
@@ -575,22 +657,24 @@ class ModelSelection:
             )
 
         chosen_preds = self._forward_get_all_models(verbose=verbose)
-        model_test_errs = self._forward_cv(
+
+        return self._choose_best_model(
             chosen_preds=chosen_preds, k_fold_num=k_fold_num, verbose=verbose)
 
-        best_model_ind = np.argmin(model_test_errs)
-        best_model_preds = chosen_preds[:(1 + best_model_ind)]
+    def backward_selection(self, k_fold_num: int = 10,
+                           verbose: bool = False) -> MultipleLinRegressor:
+        """."""
+        if self.X is None or self.y is None:
+            raise TypeError(
+                "Please 'fit' data into ModelSelection before model selection."
+            )
 
-        if verbose:
-            print(
-                "Optimal (with forward selection strategy) number of predictors:",
-                len(best_model_preds))
-            print("Predictor indices:", best_model_preds)
+        deleted_preds = self._backward_get_all_models(verbose=verbose)
 
-        self.best_model = MultipleLinRegressor(calc_stats=True).fit(
-            X=self.X[:, best_model_preds], y=self.y)
-
-        return self.best_model
+        return self._choose_best_model(
+            deleted_preds=deleted_preds,
+            k_fold_num=k_fold_num,
+            verbose=verbose)
 
 
 def _test_univar_lin_reg_01() -> None:
@@ -727,9 +811,12 @@ def _test_model_selection() -> None:
     import sklearn.datasets
 
     boston = sklearn.datasets.load_boston()
-
     chosen_model = ModelSelection().fit(
         X=boston.data, y=boston.target).forward_selection(verbose=True)
+    """
+    chosen_model = ModelSelection().fit(
+        X=boston.data, y=boston.target).backward_selection(verbose=True)
+    """
 
 
 if __name__ == "__main__":
