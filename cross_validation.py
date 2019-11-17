@@ -31,6 +31,7 @@ def kfold_cv(
         X: np.ndarray,
         k: int = 10,
         shuffle: bool = True,
+        return_inds: bool = False,
         random_state: t.Optional[int] = None,
 ) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
     """K-fold Cross Validation."""
@@ -61,26 +62,35 @@ def kfold_cv(
         split_index = test_size + int(uneven_extra_inds > 0)
         uneven_extra_inds -= 1
 
-        yield X[indices[:split_index]], X[indices[split_index:]]
+        if return_inds:
+            yield indices[:split_index], indices[split_index:]
+
+        else:
+            yield X[indices[:split_index]], X[indices[split_index:]]
 
         indices = np.roll(indices, -split_index)
 
 
-def loo_cv(X: np.ndarray, shuffle: bool = True
-           ) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
+def loo_cv(
+        X: np.ndarray,
+        shuffle: bool = True,
+        return_inds: bool = False,
+) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
     """LOOCV (Leave-one-out Cross Validation).
 
     This is the same as n-fold Cross Validation (k = n).
     """
     n_samples = X.size if X.ndim == 1 else X.shape[0]
 
-    for fold in kfold_cv(X=X, k=n_samples, shuffle=shuffle):
+    for fold in kfold_cv(
+            X=X, k=n_samples, shuffle=shuffle, returns_inds=returns_inds):
         yield fold
 
 
 def monte_carlo_cv(X: np.ndarray,
                    test_frac: float = 0.2,
                    n: int = 10,
+                   return_inds: bool = False,
                    random_state: t.Optional[int] = None
                    ) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
     """Monte Carlo Cross Validation."""
@@ -120,7 +130,12 @@ def monte_carlo_cv(X: np.ndarray,
     for _ in np.arange(n):
         np.random.shuffle(indices)
         inds_test, inds_train = np.split(indices, [test_size])
-        yield X[inds_test], X[inds_train]
+
+        if return_inds:
+            yield inds_test, inds_train
+
+        else:
+            yield X[inds_test], X[inds_train]
 
 
 if __name__ == "__main__":
