@@ -83,7 +83,7 @@ def loo_cv(
     n_samples = X.size if X.ndim == 1 else X.shape[0]
 
     for fold in kfold_cv(
-            X=X, k=n_samples, shuffle=shuffle, returns_inds=returns_inds):
+            X=X, k=n_samples, shuffle=shuffle, return_inds=return_inds):
         yield fold
 
 
