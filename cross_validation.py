@@ -35,7 +35,7 @@ def kfold_cv(
         random_state: t.Optional[int] = None,
 ) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
     """K-fold Cross Validation."""
-    if not isinstance(k, int):
+    if not isinstance(k, (int, np.int, np.int32, np.int64)):
         raise TypeError("'k' must be an integer (got {}.)".format(type(k)))
 
     if k <= 1:
