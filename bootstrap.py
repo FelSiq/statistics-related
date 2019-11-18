@@ -53,13 +53,16 @@ def bootstrap(population: np.ndarray,
         yield population[cur_inds]
 
 
-def bootstrap_test(pop: np.ndarray,
-                   test_statistic: t.Callable[[np.ndarray], t.
-                                              Union[int, float, np.number]],
-                   random_state: t.Optional[int] = None,
-                   alpha: float = 0.05,
-                   num_samples: int = 100,
-                   bootstrap_sample_size: float = 1.0) -> np.ndarray:
+def bootstrap_test(
+        pop: np.ndarray,
+        test_statistic: t.Callable[[np.ndarray], t.Union[int, float, np.
+                                                         number]],
+        random_state: t.Optional[int] = None,
+        alpha: float = 0.05,
+        num_samples: int = 100,
+        bootstrap_sample_size: float = 1.0,
+        return_std_err: bool = False,
+) -> t.Union[np.ndarray, t.Tuple[np.ndarray, float]]:
     """Get a generic confidence interval via bootstrap technique."""
     if random_state is not None:
         np.random.seed(random_state)
@@ -74,7 +77,20 @@ def bootstrap_test(pop: np.ndarray,
 
     interval = 100 * np.array([0.5 * alpha, 1.0 - 0.5 * alpha])
 
-    return np.percentile(t_stat_pseudo_pops, interval)
+    std_err = np.std(t_stat_pseudo_pops, ddof=1)
+
+    # Note: 'std_err' can be explicitly calculated as:
+    # std_err_2 = np.sqrt(
+    #    np.sum(np.square(t_stat_pseudo_pops - np.mean(t_stat_pseudo_pops))) /
+    #    (num_samples - 1))
+    # assert np.isclose(std_err_2, std_err)
+
+    est_int = np.percentile(t_stat_pseudo_pops, interval)
+
+    if return_std_err:
+        return est_int, std_err
+
+    return est_int
 
 
 def _experiment_01(random_state: t.Optional[int] = 16,
