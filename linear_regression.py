@@ -20,6 +20,8 @@ class LinRegressor:
         self.intercept = None  # type: np.ndarray
         self.residuals = None  # type: np.ndarray
 
+        self._num_samples = 0
+
         self.total_sum_sqr = None  # type: float
 
         self.residual_sum_sqr = None  # type: float
@@ -38,6 +40,7 @@ class LinRegressor:
         self.t_test_pval_reg_coeff = None  # type: float
 
         self.r_sqr_stat = None  # type: float
+        self.r_sqr_adj_stat = None  # type: float
 
         self.f_stat = None  # type: float
         self.f_stat_pval = None  # type: float
@@ -68,8 +71,7 @@ class LinRegressor:
         which means that it is problem dependent, and it is not always
         easy to define which is a ``good/low RSE.``
         """
-        self.sqr_err_residual = self.residual_sum_sqr / (
-            self.residuals.size - 2)
+        self.sqr_err_residual = self.residual_sum_sqr / (self._num_samples - 2)
 
         self.std_err_residual = np.sqrt(self.sqr_err_residual)
 
@@ -100,11 +102,11 @@ class LinRegressor:
         # Note: this F-statistic p-value value will be *exactly* the same as
         # the t-statistic test p-value
         self.f_stat_pval = scipy.stats.f(
-            dfn=1, dfd=self.residuals.size - 2).sf(np.abs(self.f_stat))
+            dfn=1, dfd=self._num_samples - 2).sf(np.abs(self.f_stat))
 
         return self.f_stat
 
-    def _calc_r_sqr_stat(self) -> float:
+    def _calc_r_sqr_stat(self) -> t.Tuple[float, float]:
         r"""Calculate the $R^{2}$ stat.
 
         The $R^{2}$ stat is calculated as
@@ -152,11 +154,16 @@ class LinRegressor:
         """
         if np.isclose(self.total_sum_sqr, 0.0):
             self.r_sqr_stat = np.nan
-            return self.r_sqr_stat
+            self.r_sqr_adj_stat = np.nan
+            return np.nan, np.nan
 
         self.r_sqr_stat = 1.0 - self.residual_sum_sqr / self.total_sum_sqr
 
-        return self.r_sqr_stat
+        self.r_sqr_adj_stat = (
+            1.0 - (self.residual_sum_sqr * (self._num_samples - 1)) /
+            (self.total_sum_sqr * (self._num_samples - 2)))
+
+        return self.r_sqr_stat, self.r_sqr_adj_stat
 
     def _calc_errs(self, X: np.ndarray, y: np.ndarray, x_mean: float,
                    y_mean: float) -> None:
@@ -178,16 +185,16 @@ class LinRegressor:
         _x_dist_sqr = np.square(X - x_mean)
         _x_dist_total = np.sum(_x_dist_sqr)
 
-        self.leverage = 1 / self.residuals.size + _x_dist_sqr / _x_dist_total
+        self.leverage = 1 / self._num_samples + _x_dist_sqr / _x_dist_total
 
         self.std_err_intercept = np.sqrt(
             self.sqr_err_residual *
-            (1.0 / self.residuals.size + np.square(x_mean) / _x_dist_total))
+            (1.0 / self._num_samples + np.square(x_mean) / _x_dist_total))
 
         self.std_err_reg_coeff = np.sqrt(self.sqr_err_residual / _x_dist_total)
 
         _t_dist_int = np.asarray(
-            scipy.stats.t.interval(alpha=0.975, df=self.residuals.size - 2),
+            scipy.stats.t.interval(alpha=0.975, df=self._num_samples - 2),
             dtype=float)
 
         self.conf_int_intercept = self.intercept + _t_dist_int * self.std_err_intercept
@@ -197,16 +204,16 @@ class LinRegressor:
         self.t_stat_reg_coeff = self.reg_coeff / self.std_err_reg_coeff
 
         self.t_test_pval_intercept = self._ttest(
-            t_stat_val=self.t_stat_intercept, df=self.residuals.size - 2)
+            t_stat_val=self.t_stat_intercept, df=self._num_samples - 2)
         self.t_test_pval_reg_coeff = self._ttest(
-            t_stat_val=self.t_stat_reg_coeff, df=self.residuals.size - 2)
+            t_stat_val=self.t_stat_reg_coeff, df=self._num_samples - 2)
 
         self._calc_f_stat()
 
         # Leave-One-Out Cross Validation (LOOCV)
         self.loocv_err = np.sum(
             np.square(self.residuals /
-                      (1.0 - self.leverage))) / self.residuals.size
+                      (1.0 - self.leverage))) / self._num_samples
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "LinRegressor":
         """Simple linear regression."""
@@ -216,12 +223,12 @@ class LinRegressor:
         if not isinstance(y, np.ndarray):
             y = np.asarray(y, dtype=float)
 
-        _num_inst = X.size if X.ndim == 1 else X.shape[0]
+        self._num_samples = X.size if X.ndim == 1 else X.shape[0]
 
-        if _num_inst != y.size:
+        if self._num_samples != y.size:
             raise ValueError("Number of instances (got {}) and 'y' "
                              "size (got {}) don't match!".format(
-                                 _num_inst, y.size))
+                                 self._num_samples, y.size))
 
         x_mean = X.mean()
         y_mean = y.mean()
@@ -269,7 +276,11 @@ class MultipleLinRegressor:
         self.residuals = None  # type: np.ndarray
         self.calc_stats = calc_stats
 
+        self._num_samples = 0
+
         self.add_intercept = False
+
+        self.mallows_cp = None  # type: float
 
         self.leverage = None  # type: np.ndarray
 
@@ -282,6 +293,7 @@ class MultipleLinRegressor:
         self.std_err_coeffs = None  # type: float
 
         self.r_sqr_stat = None  # type: float
+        self.r_sqr_adj_stat = None  # type: float
 
         self.t_stat = None  # type: np.ndarray
         self.t_test_pval = None  # type: np.ndarray
@@ -314,7 +326,7 @@ class MultipleLinRegressor:
     def _calc_std_errs(self) -> np.ndarray:
         """Calculate the standard errors for every model coefficient."""
         self.sqr_err_residual = (
-            self.residual_sum_sqr / (self.residuals.size - self.coeffs.size))
+            self.residual_sum_sqr / (self._num_samples - self.coeffs.size))
 
         self.std_err_residual = np.sqrt(self.sqr_err_residual)
 
@@ -322,13 +334,13 @@ class MultipleLinRegressor:
 
     def _calc_t_stat(self, X_aug: np.ndarray, y: np.ndarray) -> np.ndarray:
         """Calculate the t-statistics related to every coefficient."""
-        inst_num = self.residuals.size
         ang_coeffs_num = self.coeffs.size - 1
 
         self.t_stat = np.zeros(self.coeffs.size, dtype=float)
         self.t_test_pval = np.zeros(self.coeffs.size, dtype=float)
 
-        _t_stat_model = scipy.stats.t(df=inst_num - ang_coeffs_num - 1)
+        _t_stat_model = scipy.stats.t(
+            df=self._num_samples - ang_coeffs_num - 1)
 
         col_ind = np.arange(self.coeffs.size)
 
@@ -342,7 +354,7 @@ class MultipleLinRegressor:
             rss_model = model.residual_sum_sqr
 
             f_stat = (
-                (inst_num - ang_coeffs_num - 1) *
+                (self._num_samples - ang_coeffs_num - 1) *
                 (rss_model - self.residual_sum_sqr)) / self.residual_sum_sqr
 
             self.t_stat[i] = np.sign(self.coeffs[i]) * np.sqrt(np.abs(f_stat))
@@ -352,32 +364,36 @@ class MultipleLinRegressor:
 
     def _calc_f_stat(self) -> float:
         """Calculate the F-statistic related to the model."""
-        inst_num = self.residuals.size
         ang_coeffs_num = self.coeffs.size - 1
 
         if ang_coeffs_num == 0:
             self.f_stat = np.nan
             return self.f_stat
 
-        self.f_stat = (((inst_num - ang_coeffs_num - 1) *
+        self.f_stat = (((self._num_samples - ang_coeffs_num - 1) *
                         (self.total_sum_sqr - self.residual_sum_sqr)) /
                        (ang_coeffs_num * self.residual_sum_sqr))
 
         self.f_stat_pval = scipy.stats.f(
-            dfn=ang_coeffs_num, dfd=inst_num - ang_coeffs_num + 1).sf(
+            dfn=ang_coeffs_num, dfd=self._num_samples - ang_coeffs_num + 1).sf(
                 np.abs(self.f_stat))
 
         return self.f_stat
 
-    def _calc_r_sqr_stat(self) -> float:
+    def _calc_r_sqr_stat(self) -> t.Tuple[float, float]:
         """Calculate the $R^{2}$ statistic."""
         if np.isclose(self.total_sum_sqr, 0.0):
             self.r_sqr_stat = np.nan
-            return self.r_sqr_stat
+            self.r_sqr_adj_stat = np.nan
+            return np.nan, np.nan
 
         self.r_sqr_stat = 1.0 - self.residual_sum_sqr / self.total_sum_sqr
 
-        return self.r_sqr_stat
+        self.r_sqr_adj_stat = (
+            1.0 - (self.residual_sum_sqr * (self._num_samples - 1)) /
+            (self.total_sum_sqr * (self._num_samples - self.coeffs.size)))
+
+        return self.r_sqr_stat, self.r_sqr_adj_stat
 
     def _calc_vif(self, X_aug: np.ndarray) -> np.ndarray:
         """Calculate the Variance Inflation Factor (VIF).
@@ -425,6 +441,13 @@ class MultipleLinRegressor:
         self.leverage = np.sum(np.square(z_vector), axis=0)
         return self.leverage
 
+    def _calc_mallows_cp(self) -> float:
+        self.mallows_cp = ((self.residual_sum_sqr + 2 *
+                            (self.coeffs.size - 1) * np.var(self.residuals)) /
+                           self._num_samples)
+
+        return self.mallows_cp
+
     def _calc_errs(self, X_aug: np.ndarray, y: np.ndarray) -> None:
         """Calculate errors associated with the model and the fitted data."""
         y_mean = np.mean(y)
@@ -442,8 +465,48 @@ class MultipleLinRegressor:
     def fit(self,
             X: t.Optional[np.ndarray],
             y: np.ndarray,
+            lambda_: float = 0.0,
             add_intercept: bool = True) -> "MultipleLinRegressor":
-        """Fit data into model, calculating the corresponding coefficients."""
+        """Fit data into model, calculating the corresponding coefficients.
+
+        Arguments
+        ---------
+        X : None or :obj:`np.ndarray`, shape = [num_inst, num_attr]
+            Train observations as a numpy array, where eahc line is a
+            distinct observation and each column is a distinct independent
+            attribute related to the correspondent observation. If
+            None, then ``X`` is assumed to be a constant vector of ones of
+            shape [num_inst, 1] (i.e., just related to the intercept term.)
+
+        y : :obj:`np.ndarray`
+            Dependent attribute. The multiple regression will be ``y`` onto
+            ``X.``
+
+        lambda_ : :obj:`float`, optional
+            Shrinkage factor for Ridge Regression, which balances model
+            accuracy with model complexity. If lambda_ == 0, then the
+            ordinary linear regression will be performed. Note that if
+            lambda_ > 0, then it is expected that both ``X`` and ``y``
+            are standardized (mean 0 and variance 1.)
+
+            The Ridge regression is useful in the presence of highly
+            correlated variables and insufficient data to separate
+            correctly the effect of each variable correctly.
+
+            Note that this parameter is data-dependent and must be
+            tunned (by cross-validation, for instance) to work effectively.
+
+        add_intercept : :obj:`bool`, optional
+            If True, add a constant column of ones to the ``X`` data
+            in order to represent the intercept term of the regression.
+            If your ``X`` data already have this constant column, you
+            can set this argument to False. This argument is ignored
+            if ``X`` is None.
+
+        Return
+        ------
+        self
+        """
         if y.ndim == 1:
             y = y.reshape(-1, 1)
 
@@ -459,7 +522,10 @@ class MultipleLinRegressor:
         else:
             X_aug = X
 
-        _M = np.matmul(X_aug.T, X_aug)
+        self._num_samples = X_aug.shape[0]
+
+        _M = np.matmul(X_aug.T, X_aug) + np.diag(
+            np.repeat(lambda_, X_aug.shape[1]))
         _Y = np.matmul(X_aug.T, y)
 
         # Note: the interpretation of the coefficients related to some
@@ -490,10 +556,12 @@ class MultipleLinRegressor:
 
 
 class ModelSelection:
+    """Select Multiple Linear regression models with different startegies."""
+
     def __init__(self):
         self.X = None  # type: np.ndarray
         self.y = None  # type: np.ndarray
-        self.MultipleLinRegressor = None  # type: t.Optional[MultipleLinRegressor]
+        self.best_model = None  # type: t.Optional[MultipleLinRegressor]
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "ModelSelection":
         """."""
@@ -784,6 +852,7 @@ def _test_univar_lin_reg_02() -> None:
     print("RSE:", model.std_err_residual)
     print("RSE^2:", model.sqr_err_residual)
     print("R^2:", model.r_sqr_stat)
+    print("Adjusted R^2:", model.r_sqr_adj_stat)
     print("Intercept:", model.intercept)
     print("RegCoef:", model.reg_coeff)
     print("ErrIntercept:", model.std_err_intercept)
@@ -833,6 +902,7 @@ def _test_multi_lin_reg_01() -> None:
     print("RSS:", model.residual_sum_sqr)
     print("RSE:", model.std_err_residual)
     print("R^2:", model.r_sqr_stat)
+    print("Adjusted R^2:", model.r_sqr_adj_stat)
     print("Coeff SE:", model.std_err_coeffs)
     print("coeffs:", model.coeffs)
     print("t-stat", model.t_stat)
@@ -848,10 +918,10 @@ def _test_model_selection() -> None:
     import sklearn.datasets
 
     boston = sklearn.datasets.load_boston()
-    chosen_model = ModelSelection().fit(
+    ModelSelection().fit(
         X=boston.data, y=boston.target).forward_selection(verbose=True)
 
-    chosen_model = ModelSelection().fit(
+    ModelSelection().fit(
         X=boston.data, y=boston.target).backward_selection(verbose=True)
 
 
