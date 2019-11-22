@@ -465,7 +465,8 @@ class MultipleLinRegressor:
     def fit(self,
             X: t.Optional[np.ndarray],
             y: np.ndarray,
-            lambda_: float = 0.0,
+            lambda_ridge: float = 0.0,
+            lambda_lasso: float = 0.0,
             add_intercept: bool = True) -> "MultipleLinRegressor":
         """Fit data into model, calculating the corresponding coefficients.
 
@@ -482,16 +483,30 @@ class MultipleLinRegressor:
             Dependent attribute. The multiple regression will be ``y`` onto
             ``X.``
 
-        lambda_ : :obj:`float`, optional
+        lambda_ridge : :obj:`float`, optional
             Shrinkage factor for Ridge Regression, which balances model
-            accuracy with model complexity. If lambda_ == 0, then the
-            ordinary linear regression will be performed. Note that if
-            lambda_ > 0, then it is expected that both ``X`` and ``y``
-            are standardized (mean 0 and variance 1.)
+            accuracy with model complexity. If both lambda_ridge and
+            lambda_lasso are zero, then the ordinary linear regression will
+            be performed.
 
             The Ridge regression is useful in the presence of highly
             correlated variables and insufficient data to separate
             correctly the effect of each variable correctly.
+
+            Note that if lambda_ridge > 0, then it is expected that both
+            ``X`` and ``y`` are standardized (mean 0 and variance 1.)
+
+            Note that this parameter is data-dependent and must be
+            tunned (by cross-validation, for instance) to work effectively.
+
+        lambda_lasso : :obj:`float`, optional
+            Shrinkage factor for Ridge Regression, which balances model
+            accuracy with model complexity. If both lambda_ridge and
+            lambda_lasso are zero, then the ordinary linear regression will
+            be performed.
+
+            The Lasso regression is useful for feature selection among
+            uncorrelated variables.
 
             Note that this parameter is data-dependent and must be
             tunned (by cross-validation, for instance) to work effectively.
@@ -507,6 +522,18 @@ class MultipleLinRegressor:
         ------
         self
         """
+        if lambda_lasso * lambda_ridge > 0:
+            raise ValueError(
+                "One of 'lambda_ridge' and 'lambda_lasso' must be 0.")
+
+        if lambda_lasso < 0:
+            raise ValueError("'lambda_lasso' must be non-negative (got {}.)".
+                             format(lambda_lasso))
+
+        if lambda_ridge < 0:
+            raise ValueError("'lambda_ridge' must be non-negative (got {}.)".
+                             format(lambda_ridge))
+
         if y.ndim == 1:
             y = y.reshape(-1, 1)
 
@@ -524,8 +551,11 @@ class MultipleLinRegressor:
 
         self._num_samples = X_aug.shape[0]
 
-        _M = np.matmul(X_aug.T, X_aug) + np.diag(
-            np.repeat(lambda_, X_aug.shape[1]))
+        _M = np.matmul(X_aug.T, X_aug)
+
+        if lambda_ridge > 0:
+            _M += np.diag(np.repeat(lambda_rigde, X_aug.shape[1]))
+
         _Y = np.matmul(X_aug.T, y)
 
         # Note: the interpretation of the coefficients related to some
@@ -534,6 +564,10 @@ class MultipleLinRegressor:
         # the corresponding X, while kept all other independent variables
         # fixed.'
         self.coeffs = np.linalg.solve(_M, _Y)
+
+        if lambda_lasso > 0:
+            self.coeffs += (np.sign(self.coeffs) * np.heaviside(
+                np.abs(self.coeffs) - lambda_lasso, 0.0))
 
         self.residuals = y - self.predict(X)
 
