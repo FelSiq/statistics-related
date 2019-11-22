@@ -390,8 +390,9 @@ class MultipleLinRegressor:
         self.r_sqr_stat = 1.0 - self.residual_sum_sqr / self.total_sum_sqr
 
         self.r_sqr_adj_stat = (
-            1.0 - (self.residual_sum_sqr * (self._num_samples - 1)) /
-            (self.total_sum_sqr * (self._num_samples - self.coeffs.size)))
+            1.0 - (1.0 - self.r_sqr_stat) * (self._num_samples - 1) /
+            (self._num_samples - np.flatnonzero(
+                self.coeffs[self.add_intercept:]).size - 1))
 
         return self.r_sqr_stat, self.r_sqr_adj_stat
 
@@ -461,6 +462,10 @@ class MultipleLinRegressor:
             self._calc_std_errs()
             self._calc_vif(X_aug=X_aug)
             self._calc_leverage(X=X_aug[:, 1:])
+
+    @staticmethod
+    def _relu(x: np.ndarray) -> np.ndarray:
+        return np.max(np.hstack((np.zeros((x.size, 1)), x)), axis=1, keepdims=True)
 
     def fit(self,
             X: t.Optional[np.ndarray],
@@ -554,7 +559,7 @@ class MultipleLinRegressor:
         _M = np.matmul(X_aug.T, X_aug)
 
         if lambda_ridge > 0:
-            _M += np.diag(np.repeat(lambda_rigde, X_aug.shape[1]))
+            _M += np.diag(np.repeat(lambda_ridge, X_aug.shape[1]))
 
         _Y = np.matmul(X_aug.T, y)
 
@@ -566,8 +571,8 @@ class MultipleLinRegressor:
         self.coeffs = np.linalg.solve(_M, _Y)
 
         if lambda_lasso > 0:
-            self.coeffs += (np.sign(self.coeffs) * np.heaviside(
-                np.abs(self.coeffs) - lambda_lasso, 0.0))
+            _coeffs = self.coeffs
+            self.coeffs = (np.sign(_coeffs) * self._relu(np.abs(_coeffs) - lambda_lasso))
 
         self.residuals = y - self.predict(X)
 
@@ -952,6 +957,7 @@ def _test_model_selection() -> None:
     import sklearn.datasets
 
     boston = sklearn.datasets.load_boston()
+
     ModelSelection().fit(
         X=boston.data, y=boston.target).forward_selection(verbose=True)
 
@@ -959,8 +965,95 @@ def _test_model_selection() -> None:
         X=boston.data, y=boston.target).backward_selection(verbose=True)
 
 
+def _test_shrinkage() -> None:
+    import matplotlib.pyplot as plt
+    import sklearn.datasets
+
+    boston = sklearn.datasets.load_boston()
+
+    boston_std_data = (
+        boston.data - boston.data.mean(axis=0)) / boston.data.std(axis=0)
+    boston_std_target = (
+        boston.target - boston.target.mean()) / boston.target.std()
+
+    cur_res = np.zeros((10, 4), dtype=float)
+
+    lambdas = np.arange(20)
+
+    res = np.zeros((lambdas.size, 4), dtype=float)
+
+    for lambda_ind, lambda_val in enumerate(lambdas):
+        for fold_ind, inds in enumerate(
+                cross_validation.kfold_cv(boston.data, k=10,
+                                          return_inds=True)):
+            test_inds, train_inds = inds
+
+            X_train, X_test = boston_std_data[train_inds, :], boston_std_data[
+                test_inds, :]
+            y_train, y_test = boston_std_target[train_inds], boston_std_target[
+                test_inds]
+
+            model_ridge = MultipleLinRegressor(calc_stats=False).fit(
+                X_train, y_train, lambda_ridge=lambda_val)
+            test_rmse_ridge = model_ridge.rmse(y_test,
+                                               model_ridge.predict(X_test))
+
+            X_train, X_test = boston.data[train_inds, :], boston.data[
+                test_inds, :]
+            y_train, y_test = boston.target[train_inds], boston.target[
+                test_inds]
+
+            model_lasso = MultipleLinRegressor(calc_stats=False).fit(
+                X_train, y_train, lambda_lasso=lambda_val)
+            test_rmse_lasso = model_lasso.rmse(y_test,
+                                               model_lasso.predict(X_test))
+
+            cur_res[fold_ind, :] = (test_rmse_ridge,
+                                    model_ridge.r_sqr_adj_stat,
+                                    test_rmse_lasso,
+                                    model_lasso.r_sqr_adj_stat)
+
+        res[lambda_ind, :] = np.mean(cur_res, axis=0)
+        print("Done lambda: {}".format(lambda_val))
+
+    plt.subplot(2, 2, 1)
+    plt.plot(lambdas, res[:, 0], marker="o")
+    plt.xlabel("Lambda")
+    plt.ylabel("Ridge Test RMSE")
+
+    plt.subplot(2, 2, 3)
+    plt.plot(lambdas, res[:, 1], marker="o", linestyle="--")
+    plt.xlabel("Lambda")
+    plt.ylabel("Ridge Adjusted R^2")
+
+    plt.subplot(2, 2, 2)
+    plt.plot(lambdas, res[:, 2], marker="o", color="orange")
+    plt.xlabel("Lambda")
+    plt.ylabel("LASSO Test RMSE")
+
+    plt.subplot(2, 2, 4)
+    plt.plot(lambdas, res[:, 3], marker="o", linestyle="--", color="orange")
+    plt.xlabel("Lambda")
+    plt.ylabel("LASSO Adjusted R^2")
+
+    plt.show()
+
+    model_ridge = MultipleLinRegressor().fit(
+        boston_std_data, boston_std_target, lambda_ridge=2)
+    model_lasso = MultipleLinRegressor().fit(
+        boston.data, boston.target, lambda_lasso=4)
+
+    print("Ridge Adjusted R^2:", model_ridge.r_sqr_adj_stat)
+    print(model_ridge.coeffs)
+
+    print("LASSO Adjusted R^2:", model_lasso.r_sqr_adj_stat)
+    print(model_lasso.coeffs)
+    print(boston.feature_names[np.flatnonzero(model_lasso.coeffs[1:])])
+
+
 if __name__ == "__main__":
-    _test_univar_lin_reg_01()
-    _test_univar_lin_reg_02()
-    _test_multi_lin_reg_01()
-    _test_model_selection()
+    # _test_univar_lin_reg_01()
+    # _test_univar_lin_reg_02()
+    # _test_multi_lin_reg_01()
+    # _test_model_selection()
+    _test_shrinkage()
