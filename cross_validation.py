@@ -75,6 +75,7 @@ def loo_cv(
         X: np.ndarray,
         shuffle: bool = True,
         return_inds: bool = False,
+        random_state: t.Optional[int] = None,
 ) -> t.Iterator[t.Tuple[np.ndarray, np.ndarray]]:
     """LOOCV (Leave-one-out Cross Validation).
 
@@ -83,8 +84,39 @@ def loo_cv(
     n_samples = X.size if X.ndim == 1 else X.shape[0]
 
     for fold in kfold_cv(
-            X=X, k=n_samples, shuffle=shuffle, return_inds=return_inds):
+            X=X,
+            k=n_samples,
+            shuffle=shuffle,
+            return_inds=return_inds,
+            random_state=random_state):
         yield fold
+
+
+def jackknife(
+        X: np.ndarray,
+        k: int = 0,
+        shuffle: bool = True,
+        return_inds: bool = False,
+        random_state: t.Optional[int] = None,
+) -> t.Iterator[np.ndarray]:
+    """Jackknife iterator.
+
+    The jackknife procedure partitions the ``X`` data into k folds,
+    and, unlike the Cross Validation procedure, returns just the
+    `kept/train` examples.
+
+    If k <= 0, then k = `number of instances` is used.
+    """
+    n_samples = X.size if X.ndim == 1 else X.shape[0]
+    k = n_samples if k <= 0 else k
+
+    for _, train_vals in kfold_cv(
+            X=X,
+            k=k,
+            shuffle=shuffle,
+            return_inds=return_inds,
+            random_state=random_state):
+        yield train_vals
 
 
 def monte_carlo_cv(X: np.ndarray,
@@ -138,6 +170,9 @@ def monte_carlo_cv(X: np.ndarray,
             yield X[inds_test], X[inds_train]
 
 
-if __name__ == "__main__":
+def _test():
     for fold in monte_carlo_cv(np.arange(2), test_frac=0.99, random_state=1):
         print(fold)
+
+if __name__ == "__main__":
+    _test()
