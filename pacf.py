@@ -8,7 +8,53 @@ import statsmodels.tsa.arima_model
 import sklearn.linear_model
 import numpy as np
 
-import embed
+def embed_ts(ts: np.ndarray,
+             dim: int,
+             lag: int = 1,
+             include_val: bool = True) -> np.ndarray:
+    """Embbed a time-series in dimension ``dim``.
+
+    Arguments
+    ---------
+    ts : :obj:`np.ndarray`, shape: (ts.size,)
+        One-dimensional time-series.
+
+    dim : int
+        Dimension of the embedding.
+
+    lag : int, optional (default = 1)
+        Lag of the time-series.
+
+    include_val : bool, optional (default = False)
+        Include the value itself on its own embedding.
+
+    Returns
+    -------
+    :obj:`np.ndarray`, shape: (ts.size - dim * lag, dim)
+        Embbed time-series.
+    """
+    if dim <= 0:
+        raise ValueError("'dim' must be positive (got {}).".format(dim))
+
+    if lag <= 0:
+        raise ValueError("'lag' must be positive (got {}).".format(lag))
+
+    if dim * lag > ts.size:
+        raise ValueError("'dim * lag' ({}) can't be larger than the "
+                         "time-series length ({}).".format(dim * lag, ts.size))
+
+    if include_val:
+        dim -= 1
+
+    ts_emb = np.zeros((ts.size - dim * lag, dim + int(include_val)),
+                      dtype=ts.dtype)
+
+    shift_inds = lag * (dim - 1 - np.arange(-int(include_val), dim))
+
+    for i in np.arange(ts_emb.shape[0]):
+        ts_emb[i, :] = ts[i + shift_inds]
+
+    return ts_emb
 
 
 def pacf(ts: np.ndarray, nlags: int, unbiased: bool = True) -> np.ndarray:
@@ -17,14 +63,14 @@ def pacf(ts: np.ndarray, nlags: int, unbiased: bool = True) -> np.ndarray:
 
     model = sklearn.linear_model.LinearRegression()
 
-    for k in np.arange(nlags):
-        ts_embed = embed.embed_ts(ts, dim=k + 1, lag=1, include_val=True)
+    for k in np.arange(1, 1 + nlags):
+        ts_embed = embed_ts(ts, dim=k + 1, lag=1, include_val=True)
         X, y = ts_embed[:, 1:], ts_embed[:, 0]
         model.fit(X=X, y=y)
-        pacf_vals[k] = model.coef_[-1]
+        pacf_vals[k - 1] = model.coef_[-1]
 
         if unbiased:
-            pacf_vals[k] *= ts.size / ts_embed.shape[0]
+            pacf_vals[k - 1] *= ts.size / ts_embed.shape[0]
 
     return pacf_vals
 
