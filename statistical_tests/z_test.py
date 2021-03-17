@@ -10,6 +10,24 @@ def z_test(
     hypothesis_mean: float,
     tail: str = "both",
 ):
+    r"""Z-test for population mean with normal data of known variance.
+
+    Assumptions: data i.i.d. x_{1}, ..., x_{n} ~ N(mu, sigma^{2}), where
+    mu is the unknown population mean and sigma^{2} is the known population
+    variance.
+
+    Test statistic: z = (x_mean - hypothesis_mean) / x_mean_std,
+    where:
+        x_mean_std = sqrt(sigma^{2} / n) by definition of variance.
+
+    Null distribution: Z ~ N(0, 1), N is the normal distribution.
+
+    H_{0}: population mean is equal to `hypothesis_mean`
+    H_{a}:
+        If `tail`=`both`: population mean is different from `hypothesis_mean`;
+        If `tail`=`right`: population mean is greater than `hypothesis_mean`;
+        If `tail`=`left`: population mean is lesser than `hypothesis_mean`.
+    """
     assert tail in {"both", "left", "right"}
     assert true_var >= 0.0
 

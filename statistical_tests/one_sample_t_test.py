@@ -9,6 +9,24 @@ def t_test(
     hypothesis_mean: float,
     tail: str = "both",
 ):
+    """One sample t-test to check if a population have a hypothesized mean.
+
+    Assumptions:
+        i.i.d. x_{1}, ..., x_{n} ~ N(mu, sigma^{2}), where both mu and sigma
+        are unknown values.
+
+    Test statistic: t = (x_mean - hypothesis_mean) / x_mean_std
+    where:
+        x_mean_std = x_sample_std / sqrt(n)
+
+    Null hypothesis: T ~ t(n - 1), where t is the t-student distribution.
+
+    H0: population has mean = `hypothesis_mean`
+    HA:
+        if tail = `both` : population mean is different than `hypothesis_mean`;
+        if tail = `left` : population mean < `hypothesis_mean`;
+        if tail = `right`: population mean > `hypothesis_mean`.
+    """
     assert tail in {"both", "left", "right"}
 
     sample_mean = np.mean(samples)
