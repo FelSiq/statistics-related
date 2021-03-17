@@ -4,10 +4,12 @@ import typing as t
 import numpy as np
 
 
-def bootstrap(population: np.ndarray,
-              num_samples: int = 10,
-              prop: float = 1.0,
-              random_state: t.Optional[int] = None) -> np.ndarray:
+def bootstrap(
+    population: np.ndarray,
+    num_samples: int = 10,
+    prop: float = 1.0,
+    random_state: t.Optional[int] = None,
+) -> np.ndarray:
     """Generator of bootstraps ``population``.
 
     Arguments
@@ -31,8 +33,7 @@ def bootstrap(population: np.ndarray,
         Sample of ``population`` constructed via bootstrap technique.
     """
     if not isinstance(prop, (np.number, float, int)):
-        raise TypeError("'prop' must be numberic type (got {}).".format(
-            type(prop)))
+        raise TypeError("'prop' must be numberic type (got {}).".format(type(prop)))
 
     if not 0.0 < prop <= 1.0:
         raise ValueError("'prop' must be a number in (0.0, 1.0] interval.")
@@ -54,14 +55,13 @@ def bootstrap(population: np.ndarray,
 
 
 def bootstrap_test(
-        pop: np.ndarray,
-        test_statistic: t.Callable[[np.ndarray], t.Union[int, float, np.
-                                                         number]],
-        random_state: t.Optional[int] = None,
-        alpha: float = 0.05,
-        num_samples: int = 100,
-        bootstrap_sample_size: float = 1.0,
-        return_std_err: bool = False,
+    pop: np.ndarray,
+    test_statistic: t.Callable[[np.ndarray], t.Union[int, float, np.number]],
+    random_state: t.Optional[int] = None,
+    alpha: float = 0.05,
+    num_samples: int = 100,
+    bootstrap_sample_size: float = 1.0,
+    return_std_err: bool = False,
 ) -> t.Union[np.ndarray, t.Tuple[np.ndarray, float]]:
     """Get a generic confidence interval via bootstrap technique."""
     if random_state is not None:
@@ -70,7 +70,8 @@ def bootstrap_test(
     t_stat_pseudo_pops = np.zeros(num_samples)
 
     bootstrapper = bootstrap(
-        population=pop, num_samples=num_samples, prop=bootstrap_sample_size)
+        population=pop, num_samples=num_samples, prop=bootstrap_sample_size
+    )
 
     for ind, pseudo_pop in enumerate(bootstrapper):
         t_stat_pseudo_pops[ind] = test_statistic(pseudo_pop)
@@ -93,8 +94,7 @@ def bootstrap_test(
     return est_int
 
 
-def _experiment_01(random_state: t.Optional[int] = 16,
-                   verbose: bool = True) -> bool:
+def _experiment_01(random_state: t.Optional[int] = 16, verbose: bool = True) -> bool:
     """Bootstrap experiment.
 
     To calculate the two-sided confidence interval (1.0 - alpha), for some
@@ -139,8 +139,10 @@ def _experiment_01(random_state: t.Optional[int] = 16,
 
     if verbose:
         print(
-            "Confidence interval (alpha = {}/{}% confidence interval): [{}, {}]"
-            .format(alpha, 100 * (1.0 - alpha), it_min, it_max))
+            "Confidence interval (alpha = {}/{}% confidence interval): [{}, {}]".format(
+                alpha, 100 * (1.0 - alpha), it_min, it_max
+            )
+        )
         print("True mean in confidence internal: {}".format(in_conf_interval))
 
     return in_conf_interval
