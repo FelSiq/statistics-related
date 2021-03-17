@@ -57,27 +57,24 @@ def two_sample_t_test_equal_var(
 
 def _test():
     sample_std = 6
+    test_x = [12, 10, -5, -5, 0, 0, 0]
+    test_y = [12, 11, -5, -4, 0, 1, -1]
+    diffs = [0, 0, 0, -1, 0, -1, 1]
     for tail, tail_scipy in zip(
         ["both", "left", "right"], ["two-sided", "less", "greater"]
     ):
-        for mean_x, mean_y in zip(
-            [12, 10, -5, -5, 0, 0, 0], [12, 11, -5, -4, 0, 1, -1]
-        ):
+        for mean_x, mean_y, diff in zip(test_x, test_y, diffs):
             sample_x = mean_x + sample_std * np.random.randn(200)
             sample_y = mean_y + sample_std * np.random.randn(100)
-            res = two_sample_t_test_equal_var(sample_x, sample_y)
+            res = two_sample_t_test_equal_var(sample_x, sample_y, diff=diff, tail=tail)
             print(tail, res)
-            print(
-                scipy.stats.ttest_ind(
-                    sample_x, sample_y, equal_var=True, alternative=tail_scipy
-                ),
-            )
-            assert np.allclose(
-                res,
-                scipy.stats.ttest_ind(
-                    sample_x, sample_y, equal_var=True, alternative=tail_scipy
-                ),
-            )
+            if np.isclose(0, diff):
+                assert np.allclose(
+                    res,
+                    scipy.stats.ttest_ind(
+                        sample_x, sample_y, equal_var=True, alternative=tail_scipy
+                    ),
+                )
 
 
 if __name__ == "__main__":
