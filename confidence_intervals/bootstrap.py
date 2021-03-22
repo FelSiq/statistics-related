@@ -5,24 +5,19 @@ import numpy as np
 
 
 def bootstrap(
-    population: np.ndarray,
-    num_samples: int = 10,
-    prop: float = 1.0,
+    samples: np.ndarray,
+    num_resamples: int = 256,
     random_state: t.Optional[int] = None,
 ) -> np.ndarray:
-    """Generator of bootstraps ``population``.
+    """Generator of bootstraps ``samples``.
 
     Arguments
     ---------
-    population : :obj:`np.ndarray`
+    samples : :obj:`np.ndarray`
         Population to draw samples from.
 
-    num_samples : :obj:`int`
+    num_resamples : :obj:`int`
         Number of pseudo-datasets generated.
-
-    prop : :obj:`float`
-        Proportion between the size of ``population`` and the sampled
-        population. Must be in (0.0, 1.0] interval.
 
     random_state : :obj:`int`, optional
         If given, set the random seed before the first iteration.
@@ -30,145 +25,129 @@ def bootstrap(
     Yields
     -------
     :obj:`np.ndarray`
-        Sample of ``population`` constructed via bootstrap technique.
+        Sample of ``samples`` constructed via bootstrap technique.
     """
-    if not isinstance(prop, (np.number, float, int)):
-        raise TypeError("'prop' must be numberic type (got {}).".format(type(prop)))
-
-    if not 0.0 < prop <= 1.0:
-        raise ValueError("'prop' must be a number in (0.0, 1.0] interval.")
-
     if random_state is not None:
         np.random.seed(random_state)
 
-    if population.ndim == 1:
-        _pop_size = population.size
+    samples = np.asarray(samples)
 
-    else:
-        _pop_size = population.shape[0]
+    _sample_size = samples.shape[0]
 
-    bootstrap_size = int(_pop_size * prop)
-
-    for _ in np.arange(num_samples):
-        cur_inds = np.random.randint(_pop_size, size=bootstrap_size)
-        yield population[cur_inds]
+    for _ in np.arange(num_resamples):
+        cur_inds = np.random.randint(_sample_size, size=_sample_size)
+        yield samples[cur_inds]
 
 
-def bootstrap_test(
-    pop: np.ndarray,
+def ci_bootstrap_percentile(
+    samples: np.ndarray,
     test_statistic: t.Callable[[np.ndarray], t.Union[int, float, np.number]],
     random_state: t.Optional[int] = None,
     alpha: float = 0.05,
-    num_samples: int = 100,
-    bootstrap_sample_size: float = 1.0,
-    return_std_err: bool = False,
-) -> t.Union[np.ndarray, t.Tuple[np.ndarray, float]]:
-    """Get a generic confidence interval via bootstrap technique."""
+    num_resamples: int = 1024,
+) -> np.ndarray:
+    """Get a generic confidence interval via bootstrap percentile method.
+
+    Should not be used. Use empirical bootstrap instead.
+    """
     if random_state is not None:
         np.random.seed(random_state)
 
-    t_stat_pseudo_pops = np.zeros(num_samples)
+    t_stat_bootstrap_samples = np.zeros(num_resamples)
 
-    bootstrapper = bootstrap(
-        population=pop, num_samples=num_samples, prop=bootstrap_sample_size
-    )
+    bootstrapper = bootstrap(samples=samples, num_resamples=num_resamples)
 
-    for ind, pseudo_pop in enumerate(bootstrapper):
-        t_stat_pseudo_pops[ind] = test_statistic(pseudo_pop)
+    for ind, bootstrap_samples in enumerate(bootstrapper):
+        t_stat_bootstrap_samples[ind] = test_statistic(bootstrap_samples)
 
-    interval = 100 * np.array([0.5 * alpha, 1.0 - 0.5 * alpha])
+    interval = (0.5 * alpha, 1.0 - 0.5 * alpha)
 
-    std_err = np.std(t_stat_pseudo_pops, ddof=1)
-
-    # Note: 'std_err' can be explicitly calculated as:
-    # std_err_2 = np.sqrt(
-    #    np.sum(np.square(t_stat_pseudo_pops - np.mean(t_stat_pseudo_pops))) /
-    #    (num_samples - 1))
-    # assert np.isclose(std_err_2, std_err)
-
-    est_int = np.percentile(t_stat_pseudo_pops, interval)
-
-    if return_std_err:
-        return est_int, std_err
+    est_int = np.quantile(t_stat_bootstrap_samples, interval)
 
     return est_int
 
 
-def _experiment_01(random_state: t.Optional[int] = 16, verbose: bool = True) -> bool:
-    """Bootstrap experiment.
-
-    To calculate the two-sided confidence interval (1.0 - alpha), for some
-    parameter theta, can be obtained calculating the internal
-
-        [h_{alpha/2}, h_{1-alpha/2)}]
-
-    Where h_{x} denotes the x quantile of the bootstrap estimates for the
-    parameter theta.
-
-    To be more clear, we can calculate the some statistic theta for every
-    bootstrapped pseudo-dataset, and then collect the two percentiles
-    p_1 = h_{alpha/2} and p_2 = h_{1-alpha/2)} to form the two sided
-    (1.0 - alpha) confidence internal [p_1, p_2].
-
-    This experiment exemplifies this building the two-sided confidence
-    interval for the mean of some dataset.
-    """
-    reps = 1000
-    alpha = 0.05
-
+def ci_bootstrap_empirical(
+    samples: np.ndarray,
+    test_statistic: t.Callable[[np.ndarray], t.Union[int, float, np.number]],
+    alpha: float = 0.05,
+    num_resamples: int = 1024,
+    random_state: t.Optional[int] = None,
+) -> np.ndarray:
+    """Get a generic confidence interval via empirical bootstrap method."""
     if random_state is not None:
         np.random.seed(random_state)
 
-    pop = np.random.normal(size=100)
+    bootstrapper = bootstrap(samples=samples, num_resamples=num_resamples)
+    orig_stat = test_statistic(samples)
+    diffs = np.full(num_resamples, fill_value=-orig_stat)
 
-    pop_true_mean = pop.mean()
+    for ind, bootstrap_samples in enumerate(bootstrapper):
+        bootstrap_stat = test_statistic(bootstrap_samples)
+        diffs[ind] += bootstrap_stat
 
-    if verbose:
-        print("Population mean: {}".format(pop_true_mean))
+    interval = (0.5 * alpha, 1.0 - 0.5 * alpha)
+    upper_diff, lower_diff = np.quantile(diffs, interval)
 
-    bootstrapper = bootstrap(pop, num_samples=reps, random_state=random_state)
+    est_int = np.array([orig_stat - lower_diff, orig_stat - upper_diff])
 
-    means = np.zeros(reps)
-    for ind, pseudo_pop in enumerate(bootstrapper):
-        means[ind] = pseudo_pop.mean()
-
-    percentiles = 100 * np.array([0.5 * alpha, 1.0 - 0.5 * alpha])
-    it_min, it_max = np.percentile(means, percentiles)
-
-    in_conf_interval = it_min <= pop_true_mean <= it_max
-
-    if verbose:
-        print(
-            "Confidence interval (alpha = {}/{}% confidence interval): [{}, {}]".format(
-                alpha, 100 * (1.0 - alpha), it_min, it_max
-            )
-        )
-        print("True mean in confidence internal: {}".format(in_conf_interval))
-
-    return in_conf_interval
+    return est_int
 
 
-def _experiment_02():
-    """Bootstrap experiment 02."""
-    test_statistics = [np.mean, np.median]
-    for t_stat in test_statistics:
-        pop = np.random.normal(size=1000)
-        conf_interval = bootstrap_test(pop=pop, test_statistic=t_stat)
-        print(conf_interval, t_stat(pop))
+def _test_parametric_bootstrap():
+    """Parametric bootstrap using geometric distribution example."""
+    import scipy.stats
 
-    def corrcoef(pop):
-        return np.corrcoef(pop[:, 0].T, pop[:, 1].T)[0, 1]
+    arr = np.array(
+        [
+            [1, 1, 2, 1, 5, 2, 6, 2, 1, 1, 2, 1],
+            [1, 2, 3, 4, 1, 1, 2, 2, 1, 5, 1, 6],
+            [2, 3, 3, 4, 1, 1, 2, 2, 1, 5, 3, 3],
+            [4, 2, 4, 2, 1, 4, 1, 2, 4, 3, 1, 4],
+            [4, 1, 1, 1, 3, 1, 2, 1, 1, 2, 2, 3],
+            [3, 2, 2, 1, 3, 2, 1, 1, 2, 1, 7, 4],
+            [3, 4, 6, 1, 5, 1, 2, 5, 6, 8, 1, 4],
+        ]
+    ).ravel()
 
-    pop_a = np.random.normal(size=1000).reshape(-1, 1)
-    pop_b = np.random.normal(size=1000).reshape(-1, 1)
-    pop = np.hstack((pop_a, pop_b))
-    conf_interval = bootstrap_test(pop=pop, test_statistic=corrcoef)
-    print(conf_interval, corrcoef(pop))
+    p = float(1.0 / np.mean(arr))
+    dist = scipy.stats.geom(p)
+    num_resamples = 3000
+    diffs = np.full(num_resamples, fill_value=-p)
+
+    for i in np.arange(num_resamples):
+        resamples = dist.rvs(len(arr))
+        p_bootstrap = float(1.0 / np.mean(resamples))
+        diffs[i] += p_bootstrap
+
+    halpha = 0.5 * 0.05
+    upper_diff, lower_diff = np.quantile(diffs, (halpha, 1 - halpha))
+    est_int = np.array([p - lower_diff, p - upper_diff])
+
+    print(p, est_int)
+
+
+def _test():
+    test_statistics = {"mean": np.mean, "median": np.median}
+    for name, t_stat in test_statistics.items():
+        samples = np.random.normal(size=1024)
+        conf_interval = ci_bootstrap_percentile(samples=samples, test_statistic=t_stat)
+        print(name, "percentile", conf_interval, t_stat(samples))
+        conf_interval = ci_bootstrap_empirical(samples=samples, test_statistic=t_stat)
+        print(name, "empirical ", conf_interval, t_stat(samples))
+
+    def corrcoef(samples):
+        return np.corrcoef(samples[:, 0].T, samples[:, 1].T)[0, 1]
+
+    samples_a = np.random.normal(size=1024).reshape(-1, 1)
+    samples_b = np.random.normal(size=1024).reshape(-1, 1)
+    samples = np.hstack((samples_a, samples_b))
+    conf_interval = ci_bootstrap_percentile(samples=samples, test_statistic=corrcoef)
+    print("corrcoef", "percentile", conf_interval, corrcoef(samples))
+    conf_interval = ci_bootstrap_empirical(samples=samples, test_statistic=corrcoef)
+    print("corrcoef", "empirical ", conf_interval, corrcoef(samples))
 
 
 if __name__ == "__main__":
-    print("Experiment 01")
-    _experiment_01()
-
-    print("Experiment 02")
-    _experiment_02()
+    _test()
+    _test_parametric_bootstrap()
