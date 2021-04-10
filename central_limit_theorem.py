@@ -1,8 +1,27 @@
 """Tests regarding the Central Limit Theorem (CLT).
 
-The CLT states that the mean values of $n$ set of samples
-independently drawn and from the same distribution will
+The CLT states that the sum of $n$ set of i.i.d, samples
 follow a normal distribution as $n$ goes to infinity.
+
+More precisely, the distribution of the sum S of
+n samples will converge to:
+
+    S ~ N(n * mu, n * sigma^2)
+
+as n -> +inf, where S = sum_{i}(x_i), and E[x_i] = mu
+and Var[x_i] = sigma^2 for all i.
+
+The corollary of this fact is that the mean value X'
+will also follow a normal distribution:
+
+    X' ~ N(mu, sigma^2 / n)
+
+where X' = mean_{i}(x_i). This follows by the properties
+of the definition of both Expectation and Variance:
+
+    E[X'] = E[S / n] = E[S] / n = n * mu / n = mu
+and:
+    Var[X'] = Var[S / n] = Var[S] / n^2 = sigma^2 / n
 """
 import scipy.stats
 import matplotlib.pyplot as plt
