@@ -39,7 +39,7 @@ def ransac(
     max_it = int(
         np.ceil(np.log(1. - p) / np.log(1. - (1. - p_outlier)**num_param)))
 
-    tol = np.sqrt(scipy.stats.chi2.ppf(p_inliner, 1) * np.var(y))
+    tol = np.sqrt(scipy.stats.chi2.ppf(p_inliner, 2) * np.var(y, ddof=1))
 
     model = sklearn.linear_model.LinearRegression(fit_intercept=fit_intercept)
 
