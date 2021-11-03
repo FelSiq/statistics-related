@@ -136,6 +136,23 @@ class JointEntropyMetrics(_BaseEntropy):
         return res
 
     @_BaseEntropy.cached_property
+    def jensen_shannon_div(self):
+        p_avg = 0.5 * (self.p_x + self.p_y)
+
+        f_ce = super(JointEntropyMetrics, self).cross_entropy
+
+        kl_div_x_avg = f_ce(self.p_x, p_avg) - self.entropy_x
+        kl_div_y_avg = f_ce(self.p_y, p_avg) - self.entropy_y
+
+        js_div = 0.5 * (kl_div_x_avg + kl_div_y_avg)
+
+        return js_div
+
+    @_BaseEntropy.cached_property
+    def jensen_shannon_dist(self):
+        return self.jensen_shannon_div ** 0.5
+
+    @_BaseEntropy.cached_property
     def mutual_info(self):
         return self.entropy_x + self.entropy_y - self.joint_entropy
 
@@ -190,12 +207,12 @@ class JointEntropyMetrics(_BaseEntropy):
 
 def _test():
     import scipy.stats
+    import scipy.spatial
     import sklearn.metrics
 
     np.random.seed(32)
     n = 32
     x, y = np.random.randint(4, size=(2, n))
-    y = x
 
     model = JointEntropyMetrics().fit(x, y)
 
@@ -222,6 +239,11 @@ def _test():
         model.normalized_mutual_info,
         sklearn.metrics.normalized_mutual_info_score(x, y),
         sklearn.metrics.normalized_mutual_info_score(y, x),
+    )
+    print(
+        model.jensen_shannon_dist,
+        scipy.spatial.distance.jensenshannon(model.p_x, model.p_y),
+        scipy.spatial.distance.jensenshannon(model.p_y, model.p_x),
     )
 
 
