@@ -141,10 +141,13 @@ class JointEntropyMetrics(_BaseEntropy):
 
         f_ce = super(JointEntropyMetrics, self).cross_entropy
 
+        js_div = f_ce(p_avg) - 0.5 * (self.entropy_x + self.entropy_y)
+
+        # Equivalent to:
         kl_div_x_avg = f_ce(self.p_x, p_avg) - self.entropy_x
         kl_div_y_avg = f_ce(self.p_y, p_avg) - self.entropy_y
-
-        js_div = 0.5 * (kl_div_x_avg + kl_div_y_avg)
+        aux = 0.5 * (kl_div_x_avg + kl_div_y_avg)
+        assert np.isclose(js_div, aux)
 
         return js_div
 
@@ -210,7 +213,7 @@ def _test():
     import scipy.spatial
     import sklearn.metrics
 
-    np.random.seed(32)
+    np.random.seed(64)
     n = 32
     x, y = np.random.randint(4, size=(2, n))
 
